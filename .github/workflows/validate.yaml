@@ -1,4 +1,4 @@
-name: Repository validation
+name: Validate & Security
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -20,7 +21,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
-      - name: Verify required governance files
+      - name: Verify governance and contract boundary
         run: |
           test -f README.md
           test -f AGENTS.md
@@ -29,14 +30,98 @@ jobs:
       - name: Reject whitespace errors
         run: git diff --check HEAD^ HEAD
 
+  actionlint:
+    name: GitHub Actions lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rhysd/actionlint@v1.7.7
+
+  yaml-lint:
+    name: YAML syntax and style
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned YAML linter
+        run: python3 -m pip install --disable-pip-version-check yamllint==1.37.1
+      - name: Lint all repository YAML
+        run: |
+          mapfile -d '' files < <(find . -type f \( -name '*.yaml' -o -name '*.yml' \) -not -path './.git/*' -print0)
+          if [ "${#files[@]}" -gt 0 ]; then
+            yamllint -d '{extends: default, rules: {line-length: disable}}' "${files[@]}"
+          fi
+
+  secret-scan:
+    name: Secret scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  kustomize-render:
+    name: Kustomize render
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: imranismail/setup-kustomize@v2
+        with:
+          kustomize-version: '5.5.0'
+      - name: Render every declared Kustomization
+        run: |
+          mapfile -d '' dirs < <(find . -type f -name kustomization.yaml -printf '%h\0' | sort -zu)
+          for dir in "${dirs[@]}"; do
+            echo "Rendering $dir"
+            kustomize build --enable-helm "$dir" > /dev/null
+          done
+
+  scope-boundary:
+    name: Scope boundary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert no active ArgoCD handoff or secret material
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import re
+
+          forbidden_names = ('.env', '.tfstate')
+          secret_assignment = re.compile(r'(^|[^A-Za-z])(token|password|client_secret)\s*:\s*(?!\$\{)[^\s#]+', re.I)
+          violations = []
+          for path in Path('.').rglob('*'):
+              if not path.is_file() or '.git' in path.parts:
+                  continue
+              if path.name.endswith(forbidden_names) or 'kubeconfig' in path.name.lower():
+                  violations.append(f'forbidden file: {path}')
+                  continue
+              if path.suffix in ('.yaml', '.yml'):
+                  text = path.read_text(encoding='utf-8')
+                  if secret_assignment.search(text):
+                      violations.append(f'possible plaintext secret: {path}')
+          if violations:
+              raise SystemExit('\n'.join(violations))
+          PYTHON
+
   validation-summary:
     name: Validation Summary
     if: always()
-    needs: [repository-hygiene]
+    needs:
+      - repository-hygiene
+      - actionlint
+      - yaml-lint
+      - secret-scan
+      - kustomize-render
+      - scope-boundary
+
     runs-on: ubuntu-latest
     steps:
-      - name: Fail closed on a non-success prerequisite
+      - name: Fail closed on a non-success required gate
         env:
-          HYGIENE: ${{ needs.repository-hygiene.result }}
+          RESULTS: ${{ toJson(needs.*.result) }}
         run: |
-          test "$HYGIENE" = success
+          echo "$RESULTS"
+          test "$(jq '[.[] | select(. != "success" and . != "skipped")] | length' <<< "$RESULTS")" = 0

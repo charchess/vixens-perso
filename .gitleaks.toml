@@ -1,0 +1,8 @@
+title = "Vixens Perso secret scanning policy"
+[extend]
+useDefault = true
+
+[allowlist]
+description = "NetBird Authentik JWKS endpoint"
+regexTarget = "match"
+regexes = ['authentik\.auth\.svc\.cluster\.local:[^\s\"]+']

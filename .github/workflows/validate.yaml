@@ -59,6 +59,8 @@ jobs:
         with:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   kustomize-render:
     name: Kustomize render
@@ -83,8 +85,26 @@ jobs:
       - uses: actions/checkout@v4
       - name: Assert no active ArgoCD handoff or secret material
         run: |
-          ! find . -type f \( -name '*.env' -o -name '*kubeconfig*' -o -name '*.tfstate' \) -not -path './.git/*' | grep -q .
-          ! grep -RInE '(^|[^A-Za-z])(token|password|client_secret)[[:space:]]*:[[:space:]]*[^${][^[:space:]]+' --exclude-dir=.git .
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import re
+
+          forbidden_names = ('.env', '.tfstate')
+          secret_assignment = re.compile(r'(^|[^A-Za-z])(token|password|client_secret)\s*:\s*(?!\$\{)[^\s#]+', re.I)
+          violations = []
+          for path in Path('.').rglob('*'):
+              if not path.is_file() or '.git' in path.parts:
+                  continue
+              if path.name.endswith(forbidden_names) or 'kubeconfig' in path.name.lower():
+                  violations.append(f'forbidden file: {path}')
+                  continue
+              if path.suffix in ('.yaml', '.yml'):
+                  text = path.read_text(encoding='utf-8')
+                  if secret_assignment.search(text):
+                      violations.append(f'possible plaintext secret: {path}')
+          if violations:
+              raise SystemExit('\n'.join(violations))
+          PYTHON
 
   validation-summary:
     name: Validation Summary

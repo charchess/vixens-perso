@@ -1,0 +1,40 @@
+name: Repository validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository-hygiene:
+    name: Repository hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify required governance files
+        run: |
+          test -f README.md
+          test -f AGENTS.md
+          test -f WORKFLOW.md
+          test -f contracts/README.md
+      - name: Reject whitespace errors
+        run: git diff --check HEAD^ HEAD
+
+  validation-summary:
+    name: Validation Summary
+    if: always()
+    needs: [repository-hygiene]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail closed on a non-success prerequisite
+        env:
+          HYGIENE: ${{ needs.repository-hygiene.result }}
+        run: |
+          test "$HYGIENE" = success

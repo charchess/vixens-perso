@@ -1,0 +1,44 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: frigate
+spec:
+  endpointSelector:
+    matchLabels:
+      app: frigate
+  ingress:
+    - fromEntities:
+        - host
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports:
+            - port: "5000"
+              protocol: TCP
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: monitoring
+    # HA → Frigate (API, WebSocket events, RTSP)
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: homeassistant
+      toPorts:
+        - ports:
+            - port: "5000"
+              protocol: TCP
+            - port: "8554"
+              protocol: TCP
+            - port: "8555"
+              protocol: TCP
+    # birdnet-go → Frigate (API + RTSP streams)
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: birdnet-go
+      toPorts:
+        - ports:
+            - port: "5000"
+              protocol: TCP
+            - port: "8554"
+              protocol: TCP

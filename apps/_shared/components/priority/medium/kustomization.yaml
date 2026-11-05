@@ -1,0 +1,24 @@
+---
+# Kustomize Component: Medium Priority
+#
+# Medium priority class for standard applications
+#
+# Usage:
+#   components:
+#     - ../../../../_shared/components/priority/medium
+
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+patches:
+  - target:
+      kind: Deployment
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: all-deployments
+      spec:
+        template:
+          spec:
+            priorityClassName: vixens-medium

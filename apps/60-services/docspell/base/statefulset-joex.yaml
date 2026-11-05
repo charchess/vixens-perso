@@ -1,0 +1,112 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: docspell-joex
+  labels:
+    app: docspell
+    component: joex
+spec:
+  serviceName: docspell-joex
+  replicas: 1
+  selector:
+    matchLabels:
+      app: docspell
+      component: joex
+  template:
+    metadata:
+      annotations:
+        vixens.io/fast-start: "true"
+        vixens.io/no-long-connections: "true"
+        # joex V-large = 2560Mi
+        vixens.io/vpa.max-memory: "2560Mi"
+
+      labels:
+        app: docspell
+        component: joex
+        vixens.io/sizing.joex: V-large
+        vixens.io/backup-profile: "standard"
+    spec:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      priorityClassName: vixens-medium
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: joex
+          image: ghcr.io/docspell/joex:v0.43.0
+          imagePullPolicy: IfNotPresent
+          command:
+            - /custom-entrypoint.sh
+          args:
+            - --
+            - /opt/docspell.conf
+          ports:
+            - name: api
+              containerPort: 7878
+              protocol: TCP
+          env:
+            - name: JAVA_OPTS
+              value: -Xmx3072m -Xms1024m
+            - name: JDBC_URI
+              value: jdbc:postgresql://postgresql-shared-rw.databases.svc.cluster.local:5432/docspell
+            - name: JDBC_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: docspell-db-credentials
+                  key: username
+            - name: JDBC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: docspell-db-credentials
+                  key: password
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: docspell-secrets
+                  key: MINIO_ACCESS_KEY
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: docspell-secrets
+                  key: MINIO_SECRET_KEY
+          livenessProbe:
+            httpGet:
+              path: /api/info/version
+              port: api
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/info/version
+              port: api
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: config
+              mountPath: /opt/docspell.conf
+              subPath: config
+            - name: entrypoint
+              mountPath: /custom-entrypoint.sh
+              subPath: entrypoint.sh
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: docspell-joex-config
+        - name: entrypoint
+          configMap:
+            name: docspell-joex-entrypoint
+            defaultMode: 0755

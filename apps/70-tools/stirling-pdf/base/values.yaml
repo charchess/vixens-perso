@@ -1,0 +1,85 @@
+---
+# Stirling-PDF Helm Values
+# Ref:
+# https://github.com/Stirling-Tools/Stirling-PDF-chart/blob/main/values.yaml
+
+image:
+  registry: docker.stirlingpdf.com
+  repository: stirlingtools/stirling-pdf
+  pullPolicy: IfNotPresent
+  tag: 3.0.0
+replicaCount: 0
+# revisionHistoryLimit: chart template hardcodes 10; kustomize patch on Helm multi-source
+# does not apply to /spec/revisionHistoryLimit. Accepted as known limitation.
+# revisionHistoryLimit: 3  # would require chart support or ArgoCD server-side apply
+# SB-medium sizing: 512Mi req / 2Gi lim (Kyverno mutates resources via this label)
+# Note: resources below are for reference; Kyverno sizing-v2-mutate policy overrides them
+# SB-medium = 50m/500m cpu, 512Mi/2Gi mem — fits on saturated nodes, adequate for Java+LibreOffice
+resources:
+  requests:
+    cpu: 50m
+    memory: 512Mi
+  limits:
+    cpu: 500m
+    memory: 2Gi
+priorityClassName: vixens-low
+# Tolerations for control-plane nodes if needed
+tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+# Probes configuration (Increased timeouts for slow startup)
+probes:
+  liveness:
+    enabled: true
+    httpGet:
+      path: /
+      port: 8080
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    # 30 * 10s = 300s tolerance for cold-start (JWT key gen alone takes ~40s)
+    failureThreshold: 30
+  readiness:
+    enabled: true
+    httpGet:
+      path: /
+      port: 8080
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    # Must survive 300s cold-start; KEDA interceptor waitTimeout matches this
+    failureThreshold: 30
+  startup:
+    enabled: true
+    httpGet:
+      path: /
+      port: 8080
+    failureThreshold: 36
+    periodSeconds: 10
+envs:
+  - name: SECURITY_ENABLELOGIN
+    value: "false"
+  # JVM heap cap: 40% of 2Gi limit = ~820Mi heap + ~200Mi metaspace
+  # Leaves ~1Gi headroom for LibreOffice process within 2Gi container limit
+  - name: JAVA_TOOL_OPTIONS
+    value: "-XX:MaxRAMPercentage=40 -XX:MaxMetaspaceSize=200m -XX:+UseG1GC"
+securityContext:
+  enabled: true
+  fsGroup: 1000
+containerSecurityContext:
+  runAsUser: 1000
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+podLabels:
+  vixens.io/sizing.stirling-pdf-chart: SB-medium
+  vixens.io/backup-profile: "relaxed"
+podAnnotations:
+  # fast-start: liveness probe confirms HTTP is ready within 30s; LibreOffice loads lazily
+  vixens.io/fast-start: "true"
+  vixens.io/service-binding: "false"
+  vixens.io/nometrics: "true"
+  vixens.io/no-long-connections: "true"
+  # stirling-pdf SB-medium = 1024Mi
+  vixens.io/vpa.max-memory: "1024Mi"

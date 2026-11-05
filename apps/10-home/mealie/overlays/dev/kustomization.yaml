@@ -1,0 +1,30 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+labels:
+- pairs:
+    environment: dev
+resources:
+- ../../base
+- ingress.yaml
+components:
+- ../../../../_shared/components/dev-hibernate
+- ../../../../_shared/components/dataangel
+
+images:
+- name: charchess/dataangel
+  newTag: dev
+patches:
+- path: patches/dataangel-test.yaml
+  target:
+    kind: Deployment
+    name: mealie
+- patch: |-
+    - op: replace
+      path: /spec/template/spec/volumes/0
+      value:
+        name: data
+        emptyDir: {}
+  target:
+    kind: Deployment
+    name: mealie

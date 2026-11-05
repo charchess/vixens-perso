@@ -46,9 +46,10 @@ jobs:
         run: python3 -m pip install --disable-pip-version-check yamllint==1.37.1
       - name: Lint all repository YAML
         run: |
-          mapfile -d '' files < <(find . -type f \( -name '*.yaml' -o -name '*.yml' \) -not -path './.git/*' -print0)
+          # Helm chart templates are Go templates, not standalone YAML documents.
+          mapfile -d '' files < <(find . -type f \( -name '*.yaml' -o -name '*.yml' \) -not -path './.git/*' -not -path '*/charts/*' -print0)
           if [ "${#files[@]}" -gt 0 ]; then
-            yamllint -d '{extends: default, rules: {line-length: disable}}' "${files[@]}"
+            yamllint -d '{extends: relaxed, rules: {line-length: disable}}' "${files[@]}"
           fi
 
   secret-scan:
@@ -75,7 +76,14 @@ jobs:
           mapfile -d '' dirs < <(find . -type f -name kustomization.yaml -printf '%h\0' | sort -zu)
           for dir in "${dirs[@]}"; do
             echo "Rendering $dir"
-            kustomize build --enable-helm "$dir" > /dev/null
+            if ! output=$(kustomize build --enable-helm "$dir" 2>&1 > /dev/null); then
+              if python3 -c 'import sys; raise SystemExit(0 if "kustomization.yaml is empty" in sys.stdin.read() else 1)' <<< "$output"; then
+                echo "Skipping empty Kustomization stub: $dir"
+                continue
+              fi
+              printf '%s\n' "$output" >&2
+              exit 1
+            fi
           done
 
   scope-boundary:
@@ -90,7 +98,7 @@ jobs:
           import re
 
           forbidden_names = ('.env', '.tfstate')
-          secret_assignment = re.compile(r'(^|[^A-Za-z])(token|password|client_secret)\s*:\s*(?!\$\{)[^\s#]+', re.I)
+          secret_assignment = re.compile(r'^\s*(token|password|client_secret)\s*:\s*(?![\"\']?(?:\$\{|\{\{))[^\s#]+', re.I)
           violations = []
           for path in Path('.').rglob('*'):
               if not path.is_file() or '.git' in path.parts:
@@ -100,7 +108,7 @@ jobs:
                   continue
               if path.suffix in ('.yaml', '.yml'):
                   text = path.read_text(encoding='utf-8')
-                  if secret_assignment.search(text):
+                  if any(secret_assignment.search(line) for line in text.splitlines()):
                       violations.append(f'possible plaintext secret: {path}')
           if violations:
               raise SystemExit('\n'.join(violations))

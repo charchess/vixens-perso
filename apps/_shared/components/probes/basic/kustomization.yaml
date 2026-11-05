@@ -1,0 +1,54 @@
+---
+# Kustomize Component: Basic Probes
+#
+# Basic health check configuration for applications (Silver maturity)
+#
+# Includes:
+#   - Liveness probe: /health endpoint
+#   - Readiness probe: /ready endpoint
+#   - Startup probe: /health endpoint (prevents kill during slow startup)
+#
+# Usage:
+#   components:
+#     - ../../../../_shared/components/probes/basic
+
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+patches:
+  - target:
+      kind: Deployment
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: all-deployments
+      spec:
+        template:
+          spec:
+            containers:
+              - name: "*"
+                livenessProbe:
+                  httpGet:
+                    path: /health
+                    port: 8080
+                  initialDelaySeconds: 30
+                  periodSeconds: 10
+                  timeoutSeconds: 5
+                  failureThreshold: 3
+                readinessProbe:
+                  httpGet:
+                    path: /ready
+                    port: 8080
+                  initialDelaySeconds: 5
+                  periodSeconds: 5
+                  timeoutSeconds: 3
+                  failureThreshold: 1
+                startupProbe:
+                  httpGet:
+                    path: /health
+                    port: 8080
+                  initialDelaySeconds: 0
+                  periodSeconds: 10
+                  timeoutSeconds: 3
+                  failureThreshold: 30  # 30 * 10s = 5min max startup time

@@ -1,0 +1,42 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: homeassistant
+resources:
+  - ../../base
+  - ingress.yaml
+  - ingressroute-udp.yaml
+components:
+  - ../../../../_shared/components/revision-history-limit
+patches:
+  - target:
+      kind: PersistentVolumeClaim
+      name: homeassistant-config
+    patch: |-
+      - op: replace
+        path: /spec/storageClassName
+        value: storage-rwo-xfs-retain
+  - target:
+      kind: Deployment
+      name: homeassistant
+    patch: |-
+      - op: remove
+        path: /spec/template/spec/priorityClassName
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests:
+            cpu: 50m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+      - op: replace
+        path: /spec/template/spec/initContainers/0/image
+        value: "python:3.14.6-alpine"
+      - op: replace
+        path: /spec/template/spec/volumes/1
+        value:
+          name: ha-config
+          configMap:
+            name: homeassistant-config

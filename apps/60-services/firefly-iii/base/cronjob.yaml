@@ -1,0 +1,60 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: firefly-iii-cron
+  labels:
+    vixens.lab/managed-by: argocd
+spec:
+  schedule: "0 3 * * *"
+  timeZone: Europe/Paris
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            vixens.io/sizing.firefly-iii-cron: G-nano
+          annotations:
+            vixens.io/fast-start: "true"  # ephemeral job, starts in seconds
+            vixens.io/service-binding: "false"  # CronJob pods have no associated Service
+        spec:
+          restartPolicy: OnFailure
+          tolerations:
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists
+              effect: NoSchedule
+          containers:
+            - name: firefly-iii-cron
+              image: fireflyiii/core:version-6.4.16
+              command:
+                - php
+                - artisan
+                - firefly-iii:cron
+              envFrom:
+                - secretRef:
+                    name: firefly-iii-secrets
+              env:
+                - name: APP_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: firefly-iii-secrets
+                      key: APP_KEY
+                - name: DB_CONNECTION
+                  value: pgsql
+                - name: DB_HOST
+                  value: postgresql-shared-rw.databases.svc.cluster.local
+                - name: DB_DATABASE
+                  value: firefly_iii
+                - name: DB_PORT
+                  value: "5432"
+                - name: DB_USERNAME
+                  valueFrom:
+                    secretKeyRef:
+                      name: firefly-iii-secrets
+                      key: username
+                - name: DB_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: firefly-iii-secrets
+                      key: password

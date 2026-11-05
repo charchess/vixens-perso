@@ -1,0 +1,30 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vikunja
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    gethomepage.dev/enabled: "true"
+    gethomepage.dev/group: Tools
+    gethomepage.dev/name: Vikunja
+    gethomepage.dev/icon: vikunja.svg
+    gethomepage.dev/description: Task management
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - vikunja.dev.truxonline.com
+      secretName: vikunja-tls
+  rules:
+    - host: vikunja.dev.truxonline.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: vikunja
+                port:
+                  number: 80

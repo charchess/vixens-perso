@@ -1,0 +1,10 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+components:
+- ../../../../_shared/components/dev-hibernate
+kind: Kustomization
+namespace: mosquitto
+resources:
+- ../../base
+- mosquitto-auth-external-secret.yaml
+- mosquitto-tcp-ingressroute.yaml

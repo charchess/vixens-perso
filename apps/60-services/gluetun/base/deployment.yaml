@@ -1,0 +1,124 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gluetun
+  labels:
+    app: gluetun
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gluetun
+  template:
+    metadata:
+      annotations:
+        vixens.io/fast-start: "true"
+        vixens.io/explicitly-allow-root: "true"
+      labels:
+        app: gluetun
+        vixens.io/sizing.gluetun: B-nano
+        vixens.io/backup-profile: "relaxed"
+    spec:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      priorityClassName: vixens-medium
+      initContainers:
+        - name: clean-ipv6-rule
+          image: busybox:1.38
+          securityContext:
+            capabilities:
+              add: [NET_ADMIN]
+          command: ["sh", "-c", "ip -6 rule del table 51820 2>/dev/null || true"]
+      containers:
+        - name: gluetun
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
+          image: ghcr.io/qdm12/gluetun:v3.41.3
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+          env:
+            # VPN Service Provider
+            - name: VPN_SERVICE_PROVIDER
+              value: nordvpn
+            - name: VPN_TYPE
+              value: wireguard
+            # Wireguard credentials from OpenBao-backed ExternalSecret target
+            - name: WIREGUARD_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gluetun-wireguard-secrets
+                  key: WIREGUARD_PRIVATE_KEY
+            - name: WIREGUARD_ADDRESSES
+              valueFrom:
+                secretKeyRef:
+                  name: gluetun-wireguard-secrets
+                  key: WIREGUARD_ADDRESSES
+            # VPN server location (CHANGE THIS to select country)
+            - name: SERVER_COUNTRIES
+              value: Switzerland
+            # Timezone
+            - name: TZ
+              value: Etc/UTC
+            # Kubernetes-specific DNS settings (required for kube-dns)
+            - name: DNS_KEEP_NAMESERVER
+              value: on
+            # Firewall settings to allow access from other pods
+            - name: FIREWALL_INPUT_PORTS
+              value: 8888,1080,9999
+            # Allow outbound to Kubernetes pod and service networks
+            - name: FIREWALL_OUTBOUND_SUBNETS
+              value: 10.244.0.0/16,10.96.0.0/12
+            # Listening addresses
+            - name: HTTP_PROXY_LISTENING_ADDRESS
+              value: :8888
+            - name: SOCKS5_PROXY_LISTENING_ADDRESS
+              value: :1080
+            - name: HEALTH_SERVER_ADDRESS
+              value: ":9999"
+            - name: HTTPPROXY
+              value: on
+            - name: SOCKS5PROXY
+              value: on
+            - name: VPN_IPV6_ENABLED
+              value: "off"
+          ports:
+            - containerPort: 8888
+              name: http-proxy
+              protocol: TCP
+            - containerPort: 1080
+              name: socks5-proxy
+              protocol: TCP
+            - containerPort: 9999
+              name: health
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /
+              port: health
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            httpGet:
+              path: /
+              port: health
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: health
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch

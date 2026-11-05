@@ -1,0 +1,102 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trilium
+  labels:
+    app.kubernetes.io/name: trilium
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: trilium
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: trilium
+        vixens.io/sizing.trilium: G-small
+        vixens.io/backup-profile: relaxed
+      annotations:
+        vixens.io/service-binding: "false"
+        # trilium G-small = 512Mi
+        vixens.io/vpa.max-memory: "512Mi"
+        kubectl.kubernetes.io/restartedAt: "2026-03-11T22:25:00Z"
+    spec:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      priorityClassName: vixens-low
+      initContainers: []
+      containers:
+        - name: trilium
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
+          image: triliumnext/trilium:v0.106.0
+          imagePullPolicy: IfNotPresent
+          # Use the image's supported entrypoint; v0.106.0 has no /usr/src/app/main.cjs.
+          ports:
+            - containerPort: 8080
+              name: http
+          # The upstream entrypoint must begin as root to repair the retained PVC,
+          # then it drops to the image's unprivileged `node` user before starting Trilium.
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              # Required only for the root entrypoint to repair the retained PVC
+              # and switch to the unprivileged `node` account before exec.
+              add: ["CHOWN", "SETGID", "SETUID"]
+            seccompProfile:
+              type: RuntimeDefault
+          env:
+            # override K8s service env injection (TRILIUM_PORT conflicts)
+            - name: TRILIUM_PORT
+              value: "8080"
+          volumeMounts:
+            - name: trilium-data
+              mountPath: /home/node/trilium-data
+          livenessProbe:
+            httpGet:
+              path: /api/setup/status
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/setup/status
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /api/setup/status
+              port: http
+            initialDelaySeconds: 20
+            failureThreshold: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 20m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+      volumes:
+        - name: trilium-data
+          persistentVolumeClaim:
+            claimName: trilium-data
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault

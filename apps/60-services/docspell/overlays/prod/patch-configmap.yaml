@@ -1,0 +1,83 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: docspell-restserver-config
+data:
+  config: |
+    docspell.server {
+      app-name = "Docspell"
+      app-id = ${HOSTNAME}
+      base-url = "https://docspell.truxonline.com"
+      internal-url = "http://docspell-restserver:7880"
+
+      logging {
+        minimum-level = "Info"
+
+        levels = {
+          "docspell" = "Info"
+        }
+      }
+
+      bind {
+        address = "0.0.0.0"
+        port = 7880
+      }
+
+      integration-endpoint {
+        enabled = true
+        source-name = "nfs-inbox"
+        allowed-ips { enabled = false }
+        http-basic { enabled = false }
+        http-header {
+          enabled = true
+          header-name = "Docspell-Integration"
+          header-value = ${INTEGRATION_SECRET}
+        }
+      }
+
+      full-text-search {
+        enabled = true
+        backend = "postgresql"
+
+        postgresql = {
+          use-default-connection = true
+        }
+      }
+
+      auth {
+        server-secret = "docspell-secrets"
+      }
+
+      backend {
+        jdbc {
+          url = ${JDBC_URI}
+          user = ${JDBC_USERNAME}
+          password = ${JDBC_PASSWORD}
+        }
+
+        signup {
+          mode = "open"
+        }
+
+        files {
+          chunk-size = 524288
+          valid-mime-types = []
+          default-store = "minio"
+
+          stores = {
+            database { enabled = false, type = "default-database" }
+            filesystem { enabled = false, type = "file-system", directory = "/tmp" }
+            minio {
+              enabled = true
+              type = "s3"
+              endpoint = "http://nas.truxonline.com:30157"
+              access-key = ${MINIO_ACCESS_KEY}
+              secret-key = ${MINIO_SECRET_KEY}
+              bucket = "docspell"
+              region = ""
+            }
+          }
+        }
+      }
+    }

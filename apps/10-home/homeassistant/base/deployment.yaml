@@ -1,0 +1,265 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homeassistant
+  labels:
+    app: homeassistant
+    vixens.io/sizing: B-large
+    vixens.io/backup-profile: "standard"
+  annotations:
+    secret.reloader.stakater.com/reload: homeassistant-config
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: homeassistant
+  template:
+    metadata:
+      labels:
+        app: homeassistant
+        vixens.io/sizing: B-large
+        # Python wheels (NumPy/SciPy/Shapely) exceed unlabeled-init defaults.
+        # Kyverno assigns V-small: 256Mi request / 1Gi limit.
+        vixens.io/sizing.install-python-deps: V-small
+        vixens.io/backup-profile: "standard"
+      annotations:
+        reloader.stakater.com/auto: "true"
+        checksum/homeassistant-python-requirements: "968c121c5b560375a8b978dbf97792007df15c2c419331d0bea819f8e11a7c71"
+        vixens.io/fast-start: "true"
+        dataangel.io/metrics-port: "9090"
+        dataangel.io/restore-timeout: "90m"
+        dataangel.io/snapshot-interval: "24h"
+        vixens.io/explicitly-allow-root: "true"
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      priorityClassName: vixens-high
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      initContainers:
+        - name: install-python-deps
+          image: python:3.14.7-alpine
+          securityContext:
+            capabilities:
+              add: [CHOWN]
+            runAsUser: 0
+          command:
+            - sh
+            - -c
+          args:
+            - |
+              set -eu
+
+              REQUIREMENTS="/requirements/ha-requirements.txt"
+              TARGET="/config/python_packages/py314"
+              CHECKER="/tmp/check-ha-requirements.py"
+
+              mkdir -p "$TARGET"
+
+              cat > "$CHECKER" <<'PY'
+              import sys
+              from importlib.metadata import distributions
+              from pathlib import Path
+
+              from pip._vendor.packaging.requirements import Requirement
+              from pip._vendor.packaging.utils import canonicalize_name
+
+              requirements_path = Path(sys.argv[1])
+              target = sys.argv[2]
+
+              installed = {}
+              for dist in distributions(path=[target]):
+                  name = dist.metadata.get("Name")
+                  if name:
+                      installed[canonicalize_name(name)] = dist.version
+
+              unsatisfied = []
+              for raw_line in requirements_path.read_text().splitlines():
+                  line = raw_line.split("#", 1)[0].strip()
+                  if not line:
+                      continue
+
+                  requirement = Requirement(line)
+                  if requirement.marker is not None and not requirement.marker.evaluate():
+                      continue
+
+                  name = canonicalize_name(requirement.name)
+                  version = installed.get(name)
+                  if version is None:
+                      unsatisfied.append(f"{line} (missing)")
+                      continue
+
+                  if requirement.specifier and not requirement.specifier.contains(
+                      version, prereleases=True
+                  ):
+                      unsatisfied.append(f"{line} (installed: {version})")
+                      continue
+
+                  print(f"{requirement.name} {version}: satisfied")
+
+              if unsatisfied:
+                  print("Unsatisfied runtime requirements:", file=sys.stderr)
+                  for item in unsatisfied:
+                      print(f" - {item}", file=sys.stderr)
+                  raise SystemExit(1)
+              PY
+
+              if python "$CHECKER" "$REQUIREMENTS" "$TARGET"; then
+                echo "Home Assistant runtime Python requirements already satisfied."
+              else
+                echo "Installing/upgrading Home Assistant runtime Python requirements..."
+                # pip --target leaves older dist-info behind. Remove only the
+                # upgraded runtime packages so metadata and imports are unambiguous.
+                rm -rf "$TARGET"/roombapy_prime "$TARGET"/roombapy_prime-*.dist-info
+                rm -rf "$TARGET"/aiotruenas "$TARGET"/aiotruenas-*.dist-info
+                python -m pip install \
+                  --no-cache-dir \
+                  --upgrade \
+                  --root-user-action=ignore \
+                  --target="$TARGET" \
+                  -r "$REQUIREMENTS"
+                chown -R 1000:1000 "$TARGET"
+                python "$CHECKER" "$REQUIREMENTS" "$TARGET"
+              fi
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: python-requirements
+              mountPath: /requirements
+              readOnly: true
+        - name: config-init
+          image: busybox:1.38.0
+          securityContext:
+            # The restored PVC can retain root-owned generated directories.
+            # This bootstrap normalizes their ownership before Core runs as 1000.
+            runAsUser: 0
+            capabilities:
+              add: [CHOWN]
+          command:
+            - sh
+            - -c
+          args:
+            - |
+              if [ ! -s /config/configuration.yaml ]; then
+                echo "No configuration found, copying default..."
+                cp /tmp/ha-config/configuration.yaml /config/configuration.yaml
+                chown 1000:1000 /config/configuration.yaml
+              fi
+              echo "Normalizing trusted proxy ranges for UMI/K3s/Traefik access..."
+              awk '
+                /^[[:space:]]*trusted_proxies:/ {
+                  print;
+                  print "    - 10.0.0.0/8";
+                  print "    - 192.168.0.0/16";
+                  print "    - 172.16.0.0/12";
+                  in_tp=1;
+                  next;
+                }
+                in_tp && /^[[:space:]]*-[[:space:]]/ { next; }
+                in_tp && /^[[:space:]]*server_port:/ { in_tp=0; print; next; }
+                { print; }
+              ' /config/configuration.yaml > /config/configuration.yaml.tmp
+              mv /config/configuration.yaml.tmp /config/configuration.yaml
+              chown 1000:1000 /config/configuration.yaml
+              ensure_file() {
+                path="$1"
+                content="$2"
+                if [ ! -e "/config/$path" ]; then
+                  printf "%s\n" "$content" > "/config/$path"
+                  chown 1000:1000 "/config/$path"
+                fi
+              }
+              ensure_file groups.yaml "{}"
+              ensure_file automations.yaml "[]"
+              ensure_file scripts.yaml "{}"
+              ensure_file scenes.yaml "[]"
+              ensure_file templates.yaml "[]"
+              ensure_file switches.yaml "[]"
+              ensure_file sensors.yaml "[]"
+              ensure_file utility_meters.yaml "{}"
+              ensure_file mediaplayer.yaml "[]"
+              if [ ! -d /config/python_scripts ]; then
+                mkdir -p /config/python_scripts
+                chown 1000:1000 /config/python_scripts
+              fi
+              # HA backup restore runs as UID/GID 1000 and must replace this
+              # disposable runtime dependency tree atomically.
+              mkdir -p /config/python_packages
+              chown 1000:1000 /config/python_packages
+              chmod 2775 /config/python_packages
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: ha-config
+              mountPath: /tmp/ha-config
+              readOnly: true
+      containers:
+        - name: homeassistant
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 1Gi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+          image: ghcr.io/home-assistant/home-assistant:2026.11.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8123
+              name: http
+            - containerPort: 5683
+              name: coiot
+              protocol: UDP
+          env:
+            - name: TZ
+              value: Europe/Paris
+            - name: PYTHONPATH
+              value: /config/python_packages/py314:/usr/local/lib/python3.14/site-packages
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 120
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          startupProbe:
+            httpGet:
+              path: /
+              port: http
+            failureThreshold: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: config
+              mountPath: /config
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: homeassistant-config
+        - name: ha-config
+          secret:
+            secretName: homeassistant-config
+        - name: python-requirements
+          configMap:
+            name: homeassistant-python-requirements

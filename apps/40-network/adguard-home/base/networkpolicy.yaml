@@ -1,0 +1,37 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: adguard-home
+spec:
+  podSelector:
+    matchLabels:
+      app: adguard-home
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow Traefik to access AdGuard web interface (port 3000) and DNS (port 53)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik
+      ports:
+        - protocol: TCP
+          port: 3000
+        - protocol: TCP
+          port: 53
+        - protocol: UDP
+          port: 53
+    # Allow kube-system (CoreDNS health checks, etc.)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: TCP
+          port: 53
+        - protocol: UDP
+          port: 53
+  egress:
+    - {}

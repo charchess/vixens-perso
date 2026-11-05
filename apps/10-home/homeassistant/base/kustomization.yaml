@@ -1,0 +1,17 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - deployment.yaml
+  - service.yaml
+  - service-nodeport.yaml
+  - pvc.yaml
+  - configmap.yaml
+  - networkpolicy.yaml
+  - pdb.yaml
+
+configMapGenerator:
+  - name: homeassistant-python-requirements
+    files:
+      - ha-requirements.txt

@@ -1,0 +1,17 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mail-activation-gate
+  namespace: mail
+  labels:
+    app.kubernetes.io/name: mail-platform
+    app.kubernetes.io/part-of: truxonline-mail
+data:
+  status: webmail-cutover-authorized
+  reason: >-
+    Authorized HTTPS webmail reverse-proxy cutover only: Traefik serves Roundcube.
+    SMTP/IMAP/MX/DNS/NAT and fuu authority remain unchanged.
+  required_gates: >-
+    source audit; parallel Maildir sync; private DMS validation; explicit final mail
+    transport cutover approval.

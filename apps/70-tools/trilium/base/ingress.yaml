@@ -1,0 +1,30 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: trilium
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    gethomepage.dev/enabled: "true"
+    gethomepage.dev/group: Tools
+    gethomepage.dev/name: Trilium
+    gethomepage.dev/icon: trilium.svg
+    gethomepage.dev/description: Personal knowledge base
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - notes.dev.truxonline.com
+      secretName: trilium-tls
+  rules:
+    - host: notes.dev.truxonline.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: trilium
+                port:
+                  number: 80

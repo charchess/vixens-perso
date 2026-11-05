@@ -1,0 +1,112 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: radarr
+  labels:
+    app: radarr
+    vixens.io/backup-profile: "standard"
+spec:
+  strategy:
+    type: Recreate
+  replicas: 1
+  selector:
+    matchLabels:
+      app: radarr
+  template:
+    metadata:
+      labels:
+        app: radarr
+        vixens.io/sizing.radarr: V-medium
+        vixens.io/backup-profile: "standard"
+      annotations:
+        reloader.stakater.com/auto: "true"
+        vixens.io/fast-start: "true"
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+        vixens.io/no-long-connections: "true"
+    spec:
+      priorityClassName: vixens-medium
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      initContainers: []
+      containers:
+        - name: radarr
+          resources:
+            requests:
+              cpu: 50m
+              memory: 512Mi
+            limits:
+              cpu: 200m
+              memory: 2Gi
+          image: ghcr.io/hotio/radarr:release
+          ports:
+            - containerPort: 7878 # Default Radarr UI port
+              name: http
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          startupProbe:
+            httpGet:
+              path: /ping
+              port: http
+            failureThreshold: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+          env:
+            - name: RADARR__API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: radarr-secrets
+                  key: API_KEY
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: TZ
+              value: Europe/Paris
+          envFrom:
+            - secretRef:
+                name: radarr-secrets
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["SETGID", "SETUID", "CHOWN", "DAC_OVERRIDE"]
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: downloads
+              mountPath: /downloads
+            - name: movies
+              mountPath: /movies
+              subPath: movies
+      volumes:
+        - name: config
+          emptyDir: {}
+        - name: downloads
+          nfs:
+            server: nas.truxonline.com
+            path: /mnt/tank/scratch/downloads
+        - name: movies
+          nfs:
+            server: nas.truxonline.com
+            path: /mnt/tank/data/media
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault

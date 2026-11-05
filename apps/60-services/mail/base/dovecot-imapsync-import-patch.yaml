@@ -1,0 +1,61 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mail-dovecot-import-patch
+  namespace: mail
+  labels:
+    app.kubernetes.io/name: mailserver
+    app.kubernetes.io/component: imapsync-import-auth
+data:
+  user-patches.sh: |
+    #!/bin/bash
+    set -e
+    if [ -f /etc/postfix-policyd-spf-python/policyd-spf.conf ]; then
+      sed -i -E 's/^TestOnly\s*=.*/TestOnly = 0/' /etc/postfix-policyd-spf-python/policyd-spf.conf
+      sed -i -E 's/^Mail_From_reject\s*=.*/Mail_From_reject = Fail/' /etc/postfix-policyd-spf-python/policyd-spf.conf
+    fi
+
+    # Amavis runtime paths must exist after DMS setup and before daemons start.
+    install -d -o 998 -g 998 -m 0750 /var/lib/amavis/tmp /var/lib/amavis/db
+
+    # Shorten operational feedback for deferred outbound mail. The queue keeps
+    # retrying normally, but senders receive a delayed-delivery warning after
+    # four hours and a final DSN after 24 hours instead of five days.
+    postconf -e 'delay_warning_time = 4h'
+    postconf -e 'maximal_queue_lifetime = 24h'
+    postconf -e 'bounce_queue_lifetime = 24h'
+
+    # DMS v16 defaults passdb user expansion to the AD attribute
+    # uniqueIdentifier. The bounded mail-user OU does not expose it, while
+    # the authenticated login is the canonical user identity.
+    sed -i -E 's|^    user = %\{ldap:uniqueIdentifier\}$|    user = %\{user\}|' \
+      /etc/dovecot/conf.d/auth-ldap.conf.ext
+
+    # The importer login has a dedicated passwd-file entry and is mapped to
+    # the sole charchess Maildir. It is not a Dovecot master-user.
+    cat >/etc/dovecot/conf.d/auth-imapsync-import.conf.ext <<'EOF'
+    passdb gmail-import {
+      driver = passwd-file
+      passwd_file_path = /tmp/docker-mailserver/gmail-import.passwd
+      username_filter = gmail-import@truxonline.invalid
+      mechanisms_filter = PLAIN LOGIN
+      result_success = return-ok
+      result_failure = return-fail
+      result_internalfail = return-fail
+    }
+
+    userdb gmail-import {
+      driver = passwd-file
+      passwd_file_path = /tmp/docker-mailserver/gmail-import.passwd
+      result_success = return-ok
+      result_failure = continue
+      result_internalfail = continue
+    }
+    EOF
+
+    # LDAP remains authoritative for normal users. The dedicated importer
+    # must be evaluated first so its fixed Maildir mapping wins only for it.
+    if ! grep -qx '!include auth-imapsync-import.conf.ext' /etc/dovecot/conf.d/10-auth.conf; then
+      sed -i '/^!include auth-ldap\.conf\.ext$/i !include auth-imapsync-import.conf.ext' /etc/dovecot/conf.d/10-auth.conf
+    fi

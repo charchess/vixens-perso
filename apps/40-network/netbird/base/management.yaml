@@ -1,0 +1,196 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netbird-management
+  annotations:
+    vpa.kubernetes.io/updateMode: "Off"
+    goldilocks.fairwinds.com/enabled: "true"
+  labels:
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: netbird-management
+  template:
+    metadata:
+      labels:
+        app: netbird-management
+        vixens.io/sizing.init-config: G-nano
+        vixens.io/sizing.management: V-micro
+        vixens.io/backup-profile: "relaxed"
+      annotations:
+        vixens.io/fast-start: "true"
+
+    spec:
+      priorityClassName: vixens-low
+      tolerations:
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+          effect: "NoSchedule"
+      initContainers:
+        - name: init-config
+          image: busybox:1.38
+          securityContext:
+            runAsUser: 1000
+            runAsNonRoot: true
+          env:
+            - name: AUTH_ISSUER
+              value: "https://authentik.dev.truxonline.com/application/o/netbird/"
+            - name: AUTH_KEYS_LOCATION
+              value: "http://authentik.auth.svc.cluster.local:9000/application/o/netbird/jwks/"
+            - name: AUTH_CLIENT_ID
+              value: "netbird"
+            - name: AUTH_AUDIENCE
+              value: "netbird"
+            - name: AUTH_AUTHORIZATION_ENDPOINT
+              value: "https://authentik.dev.truxonline.com/application/o/authorize/"
+            - name: AUTH_DEVICE_AUTH_ENDPOINT
+              value: "https://authentik.dev.truxonline.com/application/o/device/"
+            - name: AUTH_TOKEN_ENDPOINT
+              value: "https://authentik.dev.truxonline.com/application/o/token/"
+            - name: AUTH_OIDC_CONFIG_ENDPOINT
+              value: "http://authentik.auth.svc.cluster.local:9000/application/o/netbird/.well-known/openid-configuration"
+            - name: SIGNAL_URI
+              value: "netbird-signal.dev.truxonline.com:443"
+            - name: STUN_URI
+              value: "netbird-relay.dev.truxonline.com:3478"
+          command:
+            - sh
+            - -c
+            - |
+              cat <<EOF > /etc/netbird/management.json
+              {
+                "HttpConfig": {
+                  "Address": ":8080",
+                  "AuthIssuer": "$AUTH_ISSUER",
+                  "AuthAudience": "$AUTH_AUDIENCE",
+                  "AuthKeysLocation": "$AUTH_KEYS_LOCATION",
+                  "OIDCConfigEndpoint": "$AUTH_OIDC_CONFIG_ENDPOINT",
+                  "IdpSignKeyRefreshEnabled": true
+                },
+                "DeviceAuthorizationFlow": {
+                  "Provider": "hosted",
+                  "ProviderConfig": {
+                    "ClientID": "$AUTH_CLIENT_ID",
+                    "AuthorizationEndpoint": "$AUTH_AUTHORIZATION_ENDPOINT",
+                    "DeviceAuthEndpoint": "$AUTH_DEVICE_AUTH_ENDPOINT",
+                    "TokenEndpoint": "$AUTH_TOKEN_ENDPOINT",
+                    "Scope": "openid profile email offline_access",
+                    "Audience": "$AUTH_AUDIENCE",
+                    "UseIDToken": true
+                  }
+                },
+                "PKCEAuthorizationFlow": {
+                  "Provider": "hosted",
+                  "ProviderConfig": {
+                    "ClientID": "$AUTH_CLIENT_ID",
+                    "AuthorizationEndpoint": "$AUTH_AUTHORIZATION_ENDPOINT",
+                    "TokenEndpoint": "$AUTH_TOKEN_ENDPOINT",
+                    "Scope": "openid profile email offline_access",
+                    "Audience": "$AUTH_AUDIENCE",
+                    "UseIDToken": true
+                  }
+                },
+                "Signal": {
+                  "Proto": "https",
+                  "URI": "$SIGNAL_URI",
+                  "Username": "",
+                  "Password": ""
+                },
+                "Stuns": [
+                  {
+                    "Proto": "udp",
+                    "URI": "stun:$STUN_URI",
+                    "Username": "",
+                    "Password": ""
+                  }
+                ],
+                "DatastoreConfig": {
+                  "Engine": "postgres"
+                },
+                "DataStoreEncryptionKey": "$NETBIRD_DATASTORE_ENCRYPTION_KEY"
+              }
+              EOF
+          volumeMounts:
+            - name: config-writable
+              mountPath: /etc/netbird
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: management
+          image: netbirdio/management:0.79.0
+          args: ["--port=8080", "--log-file=console", "--log-level=info", "--config=/etc/netbird/management.json"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          env:
+            - name: NETBIRD_STORE_ENGINE
+              value: "postgres"
+            - name: NB_POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: netbird-secrets
+                  key: POSTGRES_PASSWORD
+            - name: NETBIRD_STORE_ENGINE_POSTGRES_DSN
+              value: "host=postgresql-shared-rw.databases.svc.cluster.local user=netbird password=$(NB_POSTGRES_PASSWORD) dbname=netbird port=5432 sslmode=disable"
+          ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 33073
+              name: grpc
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "3"]
+          volumeMounts:
+            - name: config-writable
+              mountPath: /etc/netbird
+            - name: netbird-data
+              mountPath: /var/lib/netbird
+            - name: ca-bundle
+              mountPath: /etc/ssl/certs/ca-certificates.crt
+              subPath: ca-certificates.crt
+      volumes:
+        - name: config-writable
+          emptyDir: {}
+        - name: netbird-data
+          persistentVolumeClaim:
+            claimName: netbird-data
+        - name: ca-bundle
+          configMap:
+            name: netbird-ca-bundle
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: netbird-management
+spec:
+  ports:
+    - port: 80
+      targetPort: 8080
+      name: http
+    - port: 33073
+      targetPort: 33073
+      name: grpc
+  selector:
+    app: netbird-management

@@ -1,0 +1,48 @@
+---
+# MINIMAL GitOps configuration for Home Assistant
+# This is a FALLBACK only - real config comes from S3 backup via rclone
+# Sensitive data (tokens, credentials) are managed via:
+#   1. OpenBao + External Secrets Operator (homeassistant-secrets)
+#   2. S3 backup restoration (rclone)
+#
+# DO NOT put secrets here - they will be exposed in git history!
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: homeassistant-config
+  namespace: homeassistant
+  labels:
+    app: homeassistant
+  annotations:
+    vixens.io/note: "Fallback config only - real config from S3 backup"
+data:
+  configuration.yaml: |
+    # Minimal fallback configuration
+    # Full config is restored from S3 backup at pod startup
+    # Secrets are projected from the OpenBao-backed Kubernetes Secret via secrets.yaml
+
+    # Load default integrations
+    default_config:
+
+    homeassistant:
+      allowlist_external_urls:
+        - "https://homeassistant.truxonline.com/local/"
+
+    # Text to speech
+    tts:
+      - platform: google_translate
+
+    # Include files (restored from S3 backup)
+    group: !include groups.yaml
+    automation: !include automations.yaml
+    script: !include scripts.yaml
+    scene: !include scenes.yaml
+    template: !include templates.yaml
+    switch: !include switches.yaml
+    sensor: !include sensors.yaml
+    utility_meter: !include utility_meters.yaml
+    media_player: !include mediaplayer.yaml
+    python_script:
+
+    # Secrets are loaded from secrets.yaml (managed through OpenBao + External Secrets)
+    # notify, device_tracker, google_assistant etc. are in full config from S3

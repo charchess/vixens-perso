@@ -1,0 +1,62 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: tools
+resources:
+  - manifests.yaml
+  - rbac-view-binding.yaml
+  - cilium-networkpolicy.yaml
+
+patches:
+  - target:
+      kind: ClusterRole
+      name: radar
+    patch: |-
+      - op: replace
+        path: /rules
+        value:
+          # Custom Resource Definitions and Discovery
+          - apiGroups: ["apiextensions.k8s.io", "apiregistration.k8s.io"]
+            resources: ["customresourcedefinitions", "apiservices"]
+            verbs: ["get", "list", "watch"]
+          - apiGroups: ["authorization.k8s.io"]
+            resources: ["selfsubjectaccessreviews"]
+            verbs: ["create"]
+
+          # Core Resources (Read-only, NO SECRETS)
+          - apiGroups: [""]
+            resources: ["pods", "services", "nodes", "configmaps", "events", "namespaces", "persistentvolumes", "persistentvolumeclaims", "endpoints", "limitranges", "resourcequotas", "replicationcontrollers", "serviceaccounts"]
+            verbs: ["get", "list", "watch"]
+
+          # Pod Operations (Port-forward & Logs)
+          - apiGroups: [""]
+            resources: ["pods/portforward", "pods/log"]
+            verbs: ["create", "get"]
+
+          # Standard and Custom Groups (Full Observability)
+          - apiGroups:
+              - "apps"
+              - "batch"
+              - "autoscaling.k8s.io"
+              - "networking.k8s.io"
+              - "storage.k8s.io"
+              - "traefik.io"
+              - "traefik.containo.us"
+              - "cilium.io"
+              - "argoproj.io"
+              - "aquasecurity.github.io"
+              - "velero.io"
+              - "kyverno.io"
+              - "policies.kyverno.io"
+              - "configuration.konghq.com"
+              - "admissionregistration.k8s.io"
+              - "resource.k8s.io"
+              - "monitoring.coreos.com"
+              - "cert-manager.io"
+              - "postgresql.cnpg.io"
+              - "external-secrets.io"
+            resources: ["*"]
+            verbs: ["get", "list", "watch"]
+
+components:
+  - ../../../_shared/components/revision-history-limit

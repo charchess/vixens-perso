@@ -1,0 +1,45 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: amule
+  namespace: downloads
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: amule
+  ingress:
+    - fromEntities:
+        - host
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports:
+            - port: "4711"
+              protocol: TCP
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: monitoring
+    - fromEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "4662"
+              protocol: TCP
+            - port: "4665"
+              protocol: UDP
+            - port: "4672"
+              protocol: UDP
+  egress:
+    # amule → gluetun SOCKS5 proxy (P2P traffic tunneled through VPN)
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: services
+      toPorts:
+        - ports:
+            - port: "1080"
+              protocol: TCP
+    # amule → world (local NAS access, direct P2P connections not via proxy)
+    - toEntities:
+        - world

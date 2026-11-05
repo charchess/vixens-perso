@@ -1,0 +1,35 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: netbox-plugins-config
+  namespace: tools
+data:
+  plugins.py: |
+    PLUGINS = [
+        "netbox_topology_views",
+        "netbox_dns",
+        "netbox_inventory",
+        "netbox_security",
+        "netbox_interface_synchronization",
+        "netbox_unifi_sync",
+        "netbox_floorplan",
+    ]
+
+    PLUGINS_CONFIG = {
+        "netbox_topology_views": {
+            "draw_default_layout": True,
+        },
+        "netbox_dns": {
+            "zone_visibility": "public",
+        },
+        "netbox_inventory": {},
+        "netbox_security": {
+            "top_level_menu": True,
+        },
+        "netbox_interface_synchronization": {
+            "exclude_virtual_interfaces": True,
+        },
+        "netbox_unifi_sync": {},
+        "netbox_floorplan": {},
+    }

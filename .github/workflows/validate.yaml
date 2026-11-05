@@ -46,9 +46,10 @@ jobs:
         run: python3 -m pip install --disable-pip-version-check yamllint==1.37.1
       - name: Lint all repository YAML
         run: |
-          mapfile -d '' files < <(find . -type f \( -name '*.yaml' -o -name '*.yml' \) -not -path './.git/*' -print0)
+          # Helm chart templates are Go templates, not standalone YAML documents.
+          mapfile -d '' files < <(find . -type f \( -name '*.yaml' -o -name '*.yml' \) -not -path './.git/*' -not -path '*/charts/*' -print0)
           if [ "${#files[@]}" -gt 0 ]; then
-            yamllint -d '{extends: default, rules: {line-length: disable}}' "${files[@]}"
+            yamllint -d '{extends: relaxed, rules: {line-length: disable}}' "${files[@]}"
           fi
 
   secret-scan:

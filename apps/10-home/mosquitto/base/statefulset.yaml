@@ -1,0 +1,139 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mosquitto
+  annotations:
+    reloader.stakater.com/auto: "true"
+  labels:
+    app: mosquitto
+    app.kubernetes.io/name: mosquitto
+    app.kubernetes.io/component: mqtt-broker
+spec:
+  serviceName: mosquitto
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mosquitto
+  template:
+    metadata:
+      labels:
+        app: mosquitto
+        vixens.io/sizing.create-mosquitto-users: G-nano
+        vixens.io/sizing.mosquitto: V-nano
+        vixens.io/backup-profile: "relaxed"
+      annotations:
+        vixens.io/fast-start: "true"
+        backup.velero.io/backup-volumes-excludes: "mosquitto-auth-writable"
+    spec:
+      initContainers:
+        - name: create-mosquitto-users
+          image: eclipse-mosquitto:2.0.22
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+          command:
+            - sh
+            - -c
+          args:
+            - |
+              set -e
+              touch /auth/mosquitto.passwd
+              chmod 0600 /auth/mosquitto.passwd
+              if [ -n "$MQTT_USERS" ]; then
+                echo "Creating MQTT users from MQTT_USERS..."
+                echo "$MQTT_USERS" | tr ',' '\n' | while read -r USER; do
+                  NAME=$(echo "$USER" | cut -d: -f1)
+                  PASS=$(echo "$USER" | cut -d: -f2)
+                  if [ -n "$NAME" ] && [ -n "$PASS" ]; then
+                    mosquitto_passwd -b /auth/mosquitto.passwd "$NAME" "$PASS"
+                    echo "Created user: $NAME"
+                  fi
+                done
+              else
+                echo "MQTT_USERS not set, using existing MOSQUITTO_PASSWD_FILE..."
+                if [ -f /secrets/MOSQUITTO_PASSWD_FILE ]; then
+                  cp /secrets/MOSQUITTO_PASSWD_FILE /auth/mosquitto.passwd
+                fi
+              fi
+              chown 1883:1883 /auth/mosquitto.passwd
+          env:
+            - name: MQTT_USERS
+              valueFrom:
+                secretKeyRef:
+                  name: mosquitto-password-file
+                  key: MQTT_USERS
+                  optional: true
+          volumeMounts:
+            - name: mosquitto-auth
+              mountPath: /secrets
+              readOnly: true
+            - name: mosquitto-auth-writable
+              mountPath: /auth
+      priorityClassName: vixens-high
+      containers:
+        - name: mosquitto
+          image: eclipse-mosquitto:2.0.22
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
+          ports:
+            - name: mqtt
+              containerPort: 1883
+              protocol: TCP
+          volumeMounts:
+            - name: config
+              mountPath: /mosquitto/config
+            - name: data
+              mountPath: /mosquitto/data
+            - name: mosquitto-conf
+              mountPath: /mosquitto/config/mosquitto.conf
+              subPath: mosquitto.conf
+            - name: mosquitto-auth-writable # Mount the writable emptyDir here
+              mountPath: /mosquitto/config/auth/mosquitto.passwd
+              subPath: mosquitto.passwd
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsUser: 1883
+            runAsGroup: 1883
+          livenessProbe:
+            tcpSocket:
+              port: 1883
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: 1883
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 1883
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        - name: config
+          emptyDir: {}
+        - name: data
+          emptyDir: {}
+        - name: mosquitto-conf
+          configMap:
+            name: mosquitto-config
+        - name: mosquitto-auth # This volume is the secret mount
+          secret:
+            secretName: mosquitto-password-file
+        - name: mosquitto-auth-writable # New emptyDir volume
+          emptyDir: {}

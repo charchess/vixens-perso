@@ -1,0 +1,48 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netvisor-server
+  labels:
+    app: netvisor-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: netvisor-server
+  template:
+    metadata:
+      annotations:
+        vixens.io/fast-start: "true"
+        vixens.io/service-binding: "false"
+        vixens.io/no-long-connections: "true"
+      labels:
+        app: netvisor-server
+        vixens.io/sizing.server: V-micro
+        vixens.io/backup-profile: "relaxed"
+    spec:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      priorityClassName: vixens-low
+      containers:
+        - name: server
+          image: ghcr.io/scanopy/scanopy/server:v0.17.17
+          ports:
+            - containerPort: 60072
+              name: http
+          env:
+            - name: SCANOPY_SERVER_PORT
+              value: "60072"
+            - name: SCANOPY_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: netvisor-secrets
+                  key: DATABASE_URL
+            - name: SCANOPY_SERVER_REDIS_URL
+              value: redis://redis-shared.databases.svc.cluster.local:6379/0
+            - name: SCANOPY_WEB_EXTERNAL_PATH
+              value: /app/static
+            - name: SCANOPY_PUBLIC_URL
+              value: https://netvisor.dev.truxonline.com

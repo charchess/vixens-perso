@@ -1,0 +1,59 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homeassistant
+spec:
+  template:
+    metadata:
+      labels:
+        vixens.io/sizing.dataangel: V-small
+      annotations:
+        dataangel.io/bucket: "vixens-dev-homeassistant"
+        dataangel.io/sqlite-paths: "/config/home-assistant_v2.db"
+        dataangel.io/fs-paths: "/config"
+        dataangel.io/s3-endpoint: "http://nas.truxonline.com:30157"
+        dataangel.io/deployment-name: "homeassistant"
+        dataangel.io/rclone-interval: "60s"
+        dataangel.io/metrics-enabled: "true"
+        dataangel.io/lock-enabled: "false"
+    spec:
+      initContainers:
+        - name: dataangel
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+          ports:
+            - containerPort: 9091
+              name: metrics
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /ready
+              port: 9091
+            periodSeconds: 2
+            failureThreshold: 3600
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 9091
+            periodSeconds: 5
+            failureThreshold: 3
+          env:
+            - name: DATA_GUARD_METRICS_PORT
+              value: "9091"
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: homeassistant-secrets
+                  key: LITESTREAM_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: homeassistant-secrets
+                  key: LITESTREAM_SECRET_ACCESS_KEY
+          volumeMounts:
+            - mountPath: /data
+              $patch: delete
+            - name: config
+              mountPath: /config

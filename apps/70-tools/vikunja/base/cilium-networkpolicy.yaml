@@ -1,0 +1,34 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: vikunja
+  namespace: tools
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: vikunja
+  ingress:
+    - fromEntities:
+        - host
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: monitoring
+  egress:
+    # vikunja → databases (MariaDB/PostgreSQL)
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: databases
+    # vikunja → world (NAS/MinIO at nas.truxonline.com:30157, external OAuth/SMTP)
+    - toEntities:
+        - world
+    # vikunja → kube-apiserver
+    - toEntities:
+        - kube-apiserver

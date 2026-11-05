@@ -1,0 +1,109 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: booklore
+  labels:
+    app: booklore
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: booklore
+  template:
+    metadata:
+      annotations:
+        vixens.io/fast-start: "true"
+        vixens.io/no-long-connections: "true"
+        vixens.io/vpa.min-cpu: "300m"
+        vixens.io/explicitly-allow-root: "true"
+      labels:
+        app: booklore
+        vixens.io/sizing.booklore: V-small
+        vixens.io/backup-profile: "standard"
+    spec:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      priorityClassName: vixens-low
+      initContainers: []
+      containers:
+        - name: booklore
+          image: ghcr.io/grimmory-tools/grimmory:v3.5.0
+          resources:
+            requests:
+              cpu: 10m
+              memory: 128Mi
+            limits:
+              cpu: 1000m
+              memory: 8Gi
+          ports:
+            - containerPort: 6060
+              name: http
+          env:
+            - name: APP_USER_ID
+              value: "1000"
+            - name: APP_GROUP_ID
+              value: "1000"
+            - name: TZ
+              value: Europe/Paris
+            - name: BOOKLORE_PORT
+              value: "6060"
+            - name: DATABASE_URL
+              value: jdbc:mariadb://mariadb-shared.databases.svc.cluster.local:3306/booklore
+            - name: DATABASE_USERNAME
+              value: booklore
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: booklore-secrets
+                  key: DB_PASSWORD
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: books
+              mountPath: /books
+            - name: bookdrop
+              mountPath: /bookdrop
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /
+              port: http
+            failureThreshold: 180
+            periodSeconds: 10
+            timeoutSeconds: 30
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: books
+          nfs:
+            server: nas.truxonline.com
+            path: /mnt/tank/data/media/books
+        - name: bookdrop
+          nfs:
+            server: nas.truxonline.com
+            path: /mnt/tank/data/documents/inbox/ebooks
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault

@@ -1,0 +1,147 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netbird-signal
+  annotations:
+    vpa.kubernetes.io/updateMode: "Off"
+    goldilocks.fairwinds.com/enabled: "true"
+  labels:
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: netbird-signal
+  template:
+    metadata:
+      annotations:
+        vixens.io/fast-start: "true"
+        vixens.io/no-long-connections: "true"
+      labels:
+        app: netbird-signal
+        vixens.io/sizing.signal: V-micro
+        vixens.io/backup-profile: "relaxed"
+    spec:
+      priorityClassName: vixens-low
+      tolerations:
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+          effect: "NoSchedule"
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: signal
+          image: netbirdio/signal:0.79.0
+          args: ["--port=10000"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          livenessProbe:
+            tcpSocket:
+              port: 10000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 10000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          ports:
+            - containerPort: 10000
+              name: grpc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: netbird-signal
+spec:
+  ports:
+    - port: 80
+      targetPort: 10000
+      name: grpc
+  selector:
+    app: netbird-signal
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netbird-relay
+  annotations:
+    vpa.kubernetes.io/updateMode: "Off"
+    goldilocks.fairwinds.com/enabled: "true"
+  labels:
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: netbird-relay
+  template:
+    metadata:
+      annotations:
+        vixens.io/fast-start: "true"
+      labels:
+        app: netbird-relay
+        vixens.io/sizing.relay: V-micro
+    spec:
+      priorityClassName: vixens-low
+      tolerations:
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+          effect: "NoSchedule"
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: relay
+          image: netbirdio/relay:0.79.0
+          args: ["run", "--auth-secret", "netbird-relay-secret-change-me"]
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
+          env:
+            - name: NB_LISTEN_ADDRESS
+              value: ":33080"
+            - name: NB_EXPOSED_ADDRESS
+              value: "netbird-relay.truxonline.com:443"
+            - name: NB_AUTH_SECRET
+              value: "netbird-relay-secret-change-me"
+            - name: NETBIRD_RELAY_AUTH_SECRET
+              value: "netbird-relay-secret-change-me"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          livenessProbe:
+            tcpSocket:
+              port: 33080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 33080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          ports:
+            - containerPort: 33080
+              name: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: netbird-relay
+spec:
+  ports:
+    - port: 33080
+      targetPort: 33080
+      name: http
+  selector:
+    app: netbird-relay

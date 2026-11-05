@@ -1,0 +1,15 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: mosquitto
+resources:
+  - ../../base
+  - mosquitto-auth-external-secret.yaml
+  - mosquitto-tcp-ingressroute.yaml
+
+components:
+  - ../../../../_shared/components/sync-wave/wave-6
+  - ../../../../_shared/components/goldilocks/enabled
+  - ../../../../_shared/components/poddisruptionbudget/1
+
+patches:

@@ -1,0 +1,119 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vikunja
+  labels:
+    app.kubernetes.io/name: vikunja
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vikunja
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vikunja
+        vixens.io/sizing.vikunja: V-small
+        vixens.io/backup-profile: relaxed
+      annotations:
+        vixens.io/service-binding: "false"
+        vixens.io/no-long-connections: "true"
+        vixens.io/vpa.max-memory: "640Mi"
+        kubectl.kubernetes.io/restartedAt: "2026-03-11T22:25:00Z"
+    spec:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      priorityClassName: vixens-low
+      initContainers: []
+      containers:
+        - name: vikunja
+          image: vikunja/vikunja:2.6.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3456
+              name: http
+          env:
+            # Database
+            - name: VIKUNJA_DATABASE_TYPE
+              value: postgres
+            - name: VIKUNJA_DATABASE_HOST
+              value: postgresql-shared-rw.databases.svc.cluster.local
+            - name: VIKUNJA_DATABASE_PORT
+              value: "5432"
+            - name: VIKUNJA_DATABASE_DATABASE
+              value: vikunja
+            - name: VIKUNJA_DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: vikunja-db-secrets
+                  key: username
+            - name: VIKUNJA_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: vikunja-db-secrets
+                  key: password
+            # Redis
+            - name: VIKUNJA_REDIS_ENABLED
+              value: "true"
+            - name: VIKUNJA_REDIS_HOST
+              value: redis-shared.databases.svc.cluster.local:6379
+            - name: VIKUNJA_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: vikunja-secrets
+                  key: VIKUNJA_REDIS_PASSWORD
+            # Service
+            - name: VIKUNJA_SERVICE_JWTSECRET
+              valueFrom:
+                secretKeyRef:
+                  name: vikunja-secrets
+                  key: VIKUNJA_SERVICE_JWTSECRET
+            - name: VIKUNJA_SERVICE_PUBLICURL
+              value: https://vikunja.truxonline.com
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: vikunja-files
+              mountPath: /app/vikunja/files
+          livenessProbe:
+            httpGet:
+              path: /api/v1/info
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /api/v1/info
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          startupProbe:
+            httpGet:
+              path: /api/v1/info
+              port: http
+            failureThreshold: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: "20m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+      volumes:
+        - name: vikunja-files
+          emptyDir: {}
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault

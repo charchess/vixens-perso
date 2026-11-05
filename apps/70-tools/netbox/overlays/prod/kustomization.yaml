@@ -1,0 +1,21 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+components:
+  - ../../../../_shared/components/prod-hibernate
+  - ../../../../_shared/components/sync-wave/wave-11
+  - ../../../../_shared/components/goldilocks/enabled
+  - ../../../../_shared/components/nometrics
+  - ../../../../_shared/components/poddisruptionbudget/1
+patches:
+  - path: patch-openbao-env.yaml
+  - path: deployment-patch.yaml
+    target:
+      kind: Deployment
+      name: netbox
+  - path: resources-patch.yaml
+resources:
+  - ../../base
+  - ingress.yaml
+  - redis-external-secret.yaml
+  - httpscaledobject.yaml

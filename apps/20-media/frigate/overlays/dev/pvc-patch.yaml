@@ -1,0 +1,17 @@
+---
+# Dev uses the current TrueNAS iSCSI storage class.
+# PVC specs are immutable once bound — this patch ensures Git matches
+# the existing cluster PVC to prevent ArgoCD sync errors.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: frigate-config-pvc
+spec:
+  storageClassName: storage-rwo-retain
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: frigate-cache-pvc
+spec:
+  storageClassName: storage-rwo-retain

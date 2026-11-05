@@ -1,0 +1,26 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+labels:
+  - pairs:
+      environment: prod
+namespace: services
+components:
+  - ../../../../_shared/components/prod-hibernate
+  - ../../../../_shared/components/sync-wave/wave-11
+  - ../../../../_shared/components/goldilocks/enabled
+  - ../../../../_shared/components/poddisruptionbudget/1
+
+patches:
+  - path: patch-external-secrets.yaml
+patchesStrategicMerge:
+  - patch-configmap.yaml
+  - patch-joex-startup.yaml
+  - patch-disable-consumedir.yaml
+resources:
+  - ../../base
+  - ingress.yaml
+  - keda-interceptor-svc.yaml
+  - httpscaledobject-restserver.yaml
+  - triggerauthentication-joex.yaml
+  - scaledobject-joex.yaml

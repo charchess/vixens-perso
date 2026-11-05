@@ -1,0 +1,11 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: mail
+resources:
+  - ../../base
+  - pvc-canonical-targets.yaml
+commonLabels:
+  environment: prod
+patchesStrategicMerge:
+  - patch-storage.yaml

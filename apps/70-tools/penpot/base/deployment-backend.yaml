@@ -1,0 +1,106 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: penpot-backend
+  namespace: tools
+  labels:
+    app: penpot-backend
+    component: backend
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: penpot-backend
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        vixens.io/fast-start: "true"
+        # penpot-backend B-large = 2048Mi
+        vixens.io/vpa.max-memory: "2048Mi"
+
+      labels:
+        app: penpot-backend
+        component: backend
+        vixens.io/sizing.backend: B-large
+        vixens.io/backup-profile: standard
+    spec:
+      priorityClassName: vixens-medium
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: backend
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
+          image: penpotapp/backend:2.18.0
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: penpot-secrets
+          env:
+            - name: PENPOT_FLAGS
+              value: "enable-registration enable-login-with-password disable-secure-session-cookies disable-email-verification enable-access-tokens"
+            - name: PENPOT_PUBLIC_URI
+              value: "https://design.truxonline.com"
+            - name: PENPOT_DATABASE_URI
+              valueFrom:
+                secretKeyRef:
+                  name: penpot-secrets
+                  key: PENPOT_DATABASE_URI
+            - name: PENPOT_REDIS_URI
+              valueFrom:
+                secretKeyRef:
+                  name: penpot-secrets
+                  key: PENPOT_REDIS_URI
+            - name: PENPOT_OBJECTS_STORAGE_BACKEND
+              value: "fs"
+            - name: PENPOT_OBJECTS_STORAGE_FS_DIRECTORY
+              value: "/opt/data/objects"
+          ports:
+            - containerPort: 6060
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            failureThreshold: 5
+          startupProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            failureThreshold: 40
+            periodSeconds: 10
+            timeoutSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /opt/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: penpot-data
+      securityContext:
+        # runAsNonRoot: true  # DISABLED: penpot/backend init sequence requires root — do not enable
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      restartPolicy: Always

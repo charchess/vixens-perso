@@ -1,0 +1,134 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: amule
+  labels:
+    app: amule
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: amule
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: amule
+        vixens.io/sizing.amule: V-small
+        vixens.io/sizing.configure-proxy: G-nano
+        vixens.io/backup-profile: "relaxed"
+      annotations:
+        vixens.io/service-binding: "false"
+        vixens.io/explicitly-allow-root: "true"
+        kubectl.kubernetes.io/restartedAt: "2026-03-11T22:10:00Z"
+    spec:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      priorityClassName: vixens-low
+      containers:
+        - name: amule
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
+          resources:
+            requests:
+              cpu: 25m
+              memory: 256Mi
+            limits:
+              cpu: 100m
+              memory: 1Gi
+          image: ngosang/amule:2.3.3-20
+          ports:
+            - containerPort: 4711
+              name: http
+            - containerPort: 4662
+              name: edonkey-tcp
+              protocol: TCP
+            - containerPort: 4665
+              name: edonkey-udp
+              protocol: UDP
+            - containerPort: 4672
+              name: kademlia-udp
+              protocol: UDP
+          env:
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: TZ
+              value: Europe/Paris
+            - name: GUI_PWD
+              valueFrom:
+                secretKeyRef:
+                  name: amule-secrets
+                  key: AMULE__WEBUI_PWD
+            - name: WEBUI_PWD
+              valueFrom:
+                secretKeyRef:
+                  name: amule-secrets
+                  key: AMULE__WEBUI_PWD
+            - name: HTTP_PROXY
+              value: http://gluetun.services.svc.cluster.local:8888
+            - name: HTTPS_PROXY
+              value: http://gluetun.services.svc.cluster.local:8888
+            - name: NO_PROXY
+              value: localhost,127.0.0.1,10.0.0.0/8,192.168.0.0/16
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          startupProbe:
+            tcpSocket:
+              port: http
+            failureThreshold: 15
+            periodSeconds: 10
+          volumeMounts:
+            - name: config
+              mountPath: /home/amule/.aMule
+            - name: downloads
+              mountPath: /downloads
+      initContainers:
+        - name: configure-proxy
+          image: busybox:1.38.0
+          command:
+            - sh
+            - -c
+            - |
+              CONF="/config/amule.conf"
+              if [ -f "$CONF" ]; then
+                echo "Patching amule.conf for SOCKS5 proxy..."
+                sed -i 's/^ProxyEnableProxy=.*/ProxyEnableProxy=1/' "$CONF"
+                sed -i 's/^ProxyType=.*/ProxyType=2/' "$CONF"
+                sed -i 's/^ProxyName=.*/ProxyName=gluetun.services.svc.cluster.local/' "$CONF"
+                sed -i 's/^ProxyPort=.*/ProxyPort=1080/' "$CONF"
+              else
+                echo "Config file not found, will be created by aMule on first run."
+              fi
+          volumeMounts:
+            - name: config
+              mountPath: /config
+      volumes:
+        - name: config
+          emptyDir: {}
+        - name: downloads
+          nfs:
+            server: nas.truxonline.com
+            path: /mnt/tank/scratch/downloads/amule
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch

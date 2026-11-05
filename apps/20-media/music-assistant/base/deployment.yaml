@@ -1,0 +1,108 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: music-assistant
+  labels:
+    app: music-assistant
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: music-assistant
+  template:
+    metadata:
+      labels:
+        app: music-assistant
+        vixens.io/sizing.music-assistant: V-medium
+        vixens.io/backup-profile: "relaxed"
+      annotations: {}
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      priorityClassName: vixens-medium
+      initContainers:
+        - name: chown-data
+          image: busybox:1.38.0
+          command: ["sh", "-c", "chown -R 1000:1000 /data"]
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: config
+              mountPath: /data
+      containers:
+        - name: music-assistant
+          resources:
+            requests:
+              cpu: 50m
+              memory: 512Mi
+            limits:
+              cpu: 200m
+              memory: 2Gi
+          image: ghcr.io/music-assistant/server:2.10.4
+          ports:
+            - containerPort: 8095
+              name: web
+            - containerPort: 3483
+              name: slimproto-tcp
+              protocol: TCP
+            - containerPort: 3483
+              name: slimproto-udp
+              protocol: UDP
+          env:
+            - name: TZ
+              value: Europe/Paris
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "3"]
+          volumeMounts:
+            - name: config
+              mountPath: /data
+            - name: media
+              mountPath: /media
+          livenessProbe:
+            httpGet:
+              path: /
+              port: web
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: web
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /
+              port: web
+            failureThreshold: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: music-assistant-config
+        - name: media
+          nfs:
+            server: nas.truxonline.com
+            # TrueNAS child datasets are separate filesystems and are not
+            # traversed through the parent NFS export. Mount the dedicated
+            # music dataset export directly instead of using subPath.
+            path: /mnt/tank/data/media/music

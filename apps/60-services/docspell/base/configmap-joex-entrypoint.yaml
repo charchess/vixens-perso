@@ -1,0 +1,14 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: docspell-joex-entrypoint
+  labels:
+    app: docspell
+    component: joex
+immutable: true
+data:
+  entrypoint.sh: |
+    #!/bin/sh
+    export BASE_URL="http://$HOSTNAME.docspell-joex:7878"
+    exec /opt/joex-entrypoint.sh "$@"

@@ -1,0 +1,102 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jellyfin
+  labels:
+    app: jellyfin
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: jellyfin
+  template:
+    metadata:
+      annotations:
+        vixens.io/fast-start: "true"
+      labels:
+        app: jellyfin
+        vixens.io/sizing.jellyfin: V-medium
+        vixens.io/backup-profile: "relaxed"
+    spec:
+      priorityClassName: vixens-medium
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      initContainers: []
+      containers:
+        - name: jellyfin
+          resources:
+            requests:
+              cpu: 50m
+              memory: 512Mi
+            limits:
+              cpu: 200m
+              memory: 2Gi
+          image: jellyfin/jellyfin:10.11.11
+          ports:
+            - containerPort: 8096
+              name: http
+          env:
+            - name: TZ
+              value: Europe/Paris
+            - name: JELLYFIN_LOG_DIR
+              value: /config/log
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 1200
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 10
+          readinessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "exit 0"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 1
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            failureThreshold: 120
+            periodSeconds: 10
+            timeoutSeconds: 5
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "3"]
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: cache
+              mountPath: /cache
+            - name: content
+              mountPath: /media/movies
+              subPath: movies
+            - name: content
+              mountPath: /media/tv
+              subPath: series
+            - name: content
+              mountPath: /media/music
+              subPath: music
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: jellyfin-config-pvc
+        - name: cache
+          emptyDir: {}
+        - name: content
+          nfs:
+            server: nas.truxonline.com
+            path: /mnt/tank/data/media
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch

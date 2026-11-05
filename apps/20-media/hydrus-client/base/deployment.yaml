@@ -1,0 +1,104 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hydrus-client
+  labels:
+    app: hydrus-client
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: hydrus-client
+  template:
+    metadata:
+      labels:
+        app: hydrus-client
+        vixens.io/sizing.hydrus-client: V-large
+        vixens.io/sizing.check-integrity: B-medium
+        vixens.io/backup-profile: "relaxed"
+      annotations:
+        reloader.stakater.com/auto: "true"
+        vixens.io/fast-start: "true"
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+        vixens.io/no-long-connections: "true"
+    spec:
+      priorityClassName: vixens-medium
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      initContainers:
+        - name: check-integrity
+          image: keinos/sqlite3:3.53.4
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              touch /opt/hydrus/db/hydrus_crash.log
+              for db in /opt/hydrus/db/*.db; do
+                [ -e "$db" ] || continue
+                echo "🔍 Checking $db..."
+                if ! sqlite3 "$db" "PRAGMA quick_check;" | grep -q "ok"; then
+                  echo "❌ Corruption detected in $db! Deleting for fresh restore."
+                  rm -f "$db" "$db-wal" "$db-shm"
+                else
+                  echo "✅ $db is healthy."
+                fi
+              done
+          volumeMounts:
+            - name: config
+              mountPath: /opt/hydrus/db
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: hydrus-client
+          resources:
+            requests:
+              cpu: 100m
+              memory: 1Gi
+            limits:
+              cpu: 400m
+              memory: 4Gi
+          image: ghcr.io/hydrusnetwork/hydrus:v694
+          ports:
+            - containerPort: 5800
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 5800
+            initialDelaySeconds: 120
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 5800
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          env:
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: TZ
+              value: Europe/Paris
+          volumeMounts:
+            - name: config
+              mountPath: /opt/hydrus/db
+            - name: client-files
+              mountPath: /opt/hydrus/db/client_files
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: hydrus-client-config-pvc
+        - name: client-files
+          nfs:
+            server: nas.truxonline.com
+            path: /mnt/tank/data/photos/library/hydrus-client-files

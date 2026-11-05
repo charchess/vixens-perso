@@ -1,0 +1,126 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adguard-home
+  labels:
+    app: adguard-home
+    vixens.io/sizing: G-small
+    vixens.io/backup-profile: "relaxed"
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: adguard-home
+  template:
+    metadata:
+      labels:
+        app: adguard-home
+        vixens.io/sizing.adguard-home: G-small
+        vixens.io/backup-profile: "relaxed"
+      annotations:
+        vixens.io/fast-start: "true"
+        reloader.stakater.com/auto: "true"
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+        goldilocks.fairwinds.com/enabled: "true"
+        autoscaling.k8s.io/vpa: auto
+        vixens.io/no-long-connections: "true"
+    spec:
+      priorityClassName: vixens-critical
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      initContainers:
+        - name: seed-config-once
+          image: busybox:1.38.0
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              mkdir -p /adguard/conf /adguard/work
+              if [ ! -f /adguard/conf/AdGuardHome.yaml ]; then
+                cp /bootstrap/AdGuardHome.yaml /adguard/conf/AdGuardHome.yaml
+                sed -i \
+                  -e 's/192\.168\.201\.110:3000/0.0.0.0:3000/g' \
+                  -e 's/- 192\.168\.201\.110/- 0.0.0.0/g' \
+                  /adguard/conf/AdGuardHome.yaml
+              fi
+              chown -R 65534:65534 /adguard/conf
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN"]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: adguard-data
+              mountPath: /adguard
+            - name: bootstrap-config
+              mountPath: /bootstrap
+              readOnly: true
+      containers:
+        - name: adguard-home
+          image: adguard/adguardhome:v0.107.79
+          ports:
+            - containerPort: 3000
+              name: http
+            - containerPort: 53
+              name: dns-udp
+              protocol: UDP
+            - containerPort: 53
+              name: dns-tcp
+              protocol: TCP
+          securityContext:
+            runAsUser: 65534
+            runAsGroup: 65534
+            allowPrivilegeEscalation: false
+            capabilities:
+              add: ["NET_BIND_SERVICE"]
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          volumeMounts:
+            - name: adguard-data
+              mountPath: /opt/adguardhome/conf
+              subPath: conf
+            - name: adguard-data
+              mountPath: /opt/adguardhome/work
+              subPath: work
+      volumes:
+        - name: adguard-data
+          persistentVolumeClaim:
+            claimName: adguard-data
+        - name: bootstrap-config
+          secret:
+            secretName: adguard-home-secrets
+            items:
+              - key: ADGUARD_HOME_YAML
+                path: AdGuardHome.yaml

@@ -1,0 +1,129 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: netbird-dashboard-nginx-config
+data:
+  default.conf: |
+    server {
+        listen 8080 default_server;
+        listen [::]:8080 default_server;
+
+        root /usr/share/nginx/html;
+        location = /netbird.wasm {
+            root /usr/share/nginx/html;
+            default_type application/wasm;
+        }
+        location = /ironrdp-pkg/ironrdp_web_bg.wasm {
+            root /usr/share/nginx/html;
+            default_type application/wasm;
+        }
+
+        location / {
+          try_files $uri $uri.html $uri/ =404;
+          add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0";
+          expires off;
+        }
+
+        error_page 404 /404.html;
+        location = /404.html {
+          internal;
+          add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0";
+          expires off;
+        }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netbird-dashboard
+  annotations:
+    vpa.kubernetes.io/updateMode: "Off"
+    goldilocks.fairwinds.com/enabled: "true"
+  labels:
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: netbird-dashboard
+  template:
+    metadata:
+      labels:
+        app: netbird-dashboard
+        vixens.io/sizing.dashboard: V-micro
+        vixens.io/backup-profile: "relaxed"
+      annotations:
+        vixens.io/fast-start: "true"
+        vixens.io/explicitly-allow-root: "true"
+        vixens.io/no-long-connections: "true"
+    spec:
+      priorityClassName: vixens-low
+      tolerations:
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+          effect: "NoSchedule"
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: fix-nginx-dirs
+          image: busybox:1.38.0
+          command:
+            - sh
+            - -c
+            - mkdir -p /var/lib/nginx/logs /var/lib/nginx/tmp /run/nginx && chmod -R 777 /var/lib/nginx /run/nginx
+          volumeMounts:
+            - name: nginx-tmp
+              mountPath: /var/lib/nginx
+            - name: nginx-run
+              mountPath: /run/nginx
+      containers:
+        - name: dashboard
+          image: netbirdio/dashboard:v2.93.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              add: ["CHOWN", "SETUID", "SETGID"]
+              drop: ["ALL"]
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          ports:
+            - containerPort: 8080
+              name: http
+          volumeMounts:
+            - name: nginx-tmp
+              mountPath: /var/lib/nginx
+            - name: nginx-run
+              mountPath: /run/nginx
+            - name: nginx-config
+              mountPath: /etc/nginx/http.d/default.conf
+              subPath: default.conf
+      volumes:
+        - name: nginx-tmp
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
+        - name: nginx-config
+          configMap:
+            name: netbird-dashboard-nginx-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: netbird-dashboard
+spec:
+  ports:
+    - port: 80
+      targetPort: 8080
+      name: http
+  selector:
+    app: netbird-dashboard

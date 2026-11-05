@@ -1,0 +1,113 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sabnzbd
+  labels:
+    app: sabnzbd
+spec:
+  strategy:
+    type: Recreate
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sabnzbd
+  template:
+    metadata:
+      labels:
+        app: sabnzbd
+        vixens.io/sizing.sabnzbd: V-micro
+        vixens.io/backup-profile: "relaxed"
+      annotations:
+        reloader.stakater.com/auto: "true"
+        vixens.io/fast-start: "true"
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+        vixens.io/no-long-connections: "true"
+        # s6-overlay v3 preinit validates /run ownership matches PUID.
+        # emptyDir is created uid=0 by Kubernetes; fix-run-dir chowns it before s6 starts.
+        vixens.io/explicitly-allow-root: "true"
+
+    spec:
+      priorityClassName: vixens-medium
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      initContainers:
+        - name: fix-run-dir
+          image: busybox:1.38.0
+          command: ["sh", "-c", "chown 1000:1000 /run"]
+          securityContext:
+            runAsUser: 0  # must run as root to chown /run (emptyDir created uid=0 by kubelet)
+          volumeMounts:
+            - name: run
+              mountPath: /run
+      containers:
+        - name: sabnzbd
+          resources:
+            requests:
+              cpu: 50m
+              memory: 512Mi
+            limits:
+              cpu: 200m
+              memory: 2Gi
+          image: ghcr.io/linuxserver/sabnzbd:version-4.4.1
+          ports:
+            - containerPort: 8080 # Default Sabnzbd UI port
+              name: http
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          startupProbe:
+            httpGet:
+              path: /
+              port: http
+            failureThreshold: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+          env:
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: TZ
+              value: Europe/Paris
+          volumeMounts:
+            - name: run
+              mountPath: /run
+            - name: config
+              mountPath: /config
+            - name: downloads
+              mountPath: /downloads
+      volumes:
+        - name: run
+          emptyDir: {}
+        - name: config
+          emptyDir: {}
+        - name: downloads
+          nfs:
+            server: nas.truxonline.com
+            path: /mnt/tank/scratch/downloads
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault

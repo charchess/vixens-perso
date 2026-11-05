@@ -1,0 +1,114 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: gmail-import
+  namespace: mail
+  labels:
+    app.kubernetes.io/name: gmail-import
+    app.kubernetes.io/component: importer
+    app.kubernetes.io/part-of: truxonline-mail
+spec:
+  # The wrapper remains paused until private post-cutover validation completes.
+  suspend: true
+  schedule: "*/10 * * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: gmail-import
+            app.kubernetes.io/component: importer
+            app.kubernetes.io/part-of: truxonline-mail
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            fsGroup: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: gmail-import
+              image: gilleslamiral/imapsync@sha256:ece980cb0fd2806369975d2989a3e8d9fbf28d632cdd45a05961a1e511612ed5
+              imagePullPolicy: IfNotPresent
+              command: ["sh", "-ec"]
+              args:
+                - |
+                  user2="$(cat /var/run/imapsync-target/IMAPSYNC_DOVECOT_USER)"
+                  sync_log=/var/tmp/imapsync-sync.log
+                  verify_log=/var/tmp/imapsync-verify.log
+
+                  set +e
+                  /usr/bin/imapsync \
+                    --host1 imap.gmail.com --port1 993 --ssl1 \
+                    --user1 charchess@gmail.com \
+                    --passfile1 /var/run/gmail/GMAIL_IMAP_PASSWORD \
+                    --host2 mailserver.mail.svc.cluster.local --port2 993 --ssl2 \
+                    --user2 "$user2" \
+                    --passfile2 /var/run/imapsync-target/IMAPSYNC_DOVECOT_PASSWORD \
+                    --folder INBOX \
+                    --syncinternaldates \
+                    --delete1 \
+                    --nofoldersizes >"$sync_log" 2>&1
+                  sync_exit=$?
+
+                  /usr/bin/imapsync \
+                    --host1 imap.gmail.com --port1 993 --ssl1 \
+                    --user1 charchess@gmail.com \
+                    --passfile1 /var/run/gmail/GMAIL_IMAP_PASSWORD \
+                    --host2 mailserver.mail.svc.cluster.local --port2 993 --ssl2 \
+                    --user2 "$user2" \
+                    --passfile2 /var/run/imapsync-target/IMAPSYNC_DOVECOT_PASSWORD \
+                    --folder INBOX \
+                    --dry \
+                    --nofoldersizes >"$verify_log" 2>&1
+                  verify_exit=$?
+                  set -e
+
+                  source_missing="$(sed -n 's/^Messages found in host1 not in host2[[:space:]]*:[[:space:]]*\([0-9][0-9]*\) messages$/\1/p' "$verify_log")"
+                  if [ "$verify_exit" -eq 0 ] && [ "$source_missing" = "0" ]; then
+                    if [ "$sync_exit" -eq 0 ]; then
+                      outcome=converged
+                    else
+                      outcome=converged_with_warnings
+                    fi
+                    printf 'mail_sync_result outcome=%s sync_exit=%s verify_exit=%s source_missing=%s\n' "$outcome" "$sync_exit" "$verify_exit" "$source_missing"
+                    exit 0
+                  fi
+
+                  printf 'mail_sync_result outcome=nonconvergent sync_exit=%s verify_exit=%s source_missing=%s\n' "$sync_exit" "$verify_exit" "${source_missing:-unknown}" >&2
+                  exit 1
+              volumeMounts:
+                - name: gmail-credentials
+                  mountPath: /var/run/gmail
+                  readOnly: true
+                - name: imapsync-target-credentials
+                  mountPath: /var/run/imapsync-target
+                  readOnly: true
+                - name: imapsync-tmp
+                  mountPath: /var/tmp
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+          volumes:
+            - name: gmail-credentials
+              secret:
+                secretName: mail-gmail-import
+                defaultMode: 0440
+            - name: imapsync-target-credentials
+              secret:
+                secretName: mail-imapsync-runtime
+                defaultMode: 0440
+            - name: imapsync-tmp
+              emptyDir: {}

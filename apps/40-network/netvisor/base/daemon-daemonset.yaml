@@ -1,0 +1,54 @@
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: netvisor-daemon
+  labels:
+    app: netvisor-daemon
+spec:
+  selector:
+    matchLabels:
+      app: netvisor-daemon
+  template:
+    metadata:
+      annotations:
+        vixens.io/fast-start: "true"
+        vixens.io/service-binding: "false"
+        vixens.io/explicitly-allow-root: "true"
+        vixens.io/nometrics: "true"
+        vixens.io/no-long-connections: "true"
+      labels:
+        app: netvisor-daemon
+        vixens.io/sizing.daemon: G-nano
+        vixens.io/service-binding: "false"
+    spec:
+      hostNetwork: false
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      priorityClassName: vixens-low
+      containers:
+        - name: daemon
+          image: ghcr.io/scanopy/scanopy/daemon:v0.17.17
+          securityContext:
+            privileged: true
+          env:
+            - name: SCANOPY_SERVER_TARGET
+              value: http://netvisor-server.networking.svc.cluster.local
+            - name: SCANOPY_SERVER_PORT
+              value: "60072"
+            - name: SCANOPY_DAEMON_PORT
+              value: "60073"
+            - name: SCANOPY_NETWORK_ID
+              valueFrom:
+                secretKeyRef:
+                  name: netvisor-secrets
+                  key: SCANOPY_NETWORK_ID
+            - name: SCANOPY_DAEMON_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: netvisor-secrets
+                  key: SCANOPY_DAEMON_API_KEY
+            - name: SCANOPY_MODE
+              value: Pull

@@ -1,0 +1,24 @@
+---
+# Kustomize Component: High Priority
+#
+# High priority class for critical applications
+#
+# Usage:
+#   components:
+#     - ../../../../_shared/components/priority/high
+
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+patches:
+  - target:
+      kind: Deployment
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: all-deployments
+      spec:
+        template:
+          spec:
+            priorityClassName: vixens-high

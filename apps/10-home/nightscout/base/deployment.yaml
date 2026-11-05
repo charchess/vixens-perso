@@ -1,0 +1,76 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nightscout
+  labels:
+    app: nightscout
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: nightscout
+  template:
+    metadata:
+      labels:
+        app: nightscout
+        vixens.io/sizing.nightscout: V-micro
+        vixens.io/priority-class: vixens-medium
+      annotations:
+        reloader.stakater.com/auto: "true"
+        vixens.io/fast-start: "true"
+    spec:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: nightscout
+          image: nightscout/cgm-remote-monitor:15.0.8
+          ports:
+            - containerPort: 1337
+              name: http
+          env:
+            - name: BASE_URL
+              value: https://nightscout.truxonline.com
+            - name: DISPLAY_UNITS
+              value: mmol
+            - name: TIME_FORMAT
+              value: "24"
+            - name: LANGUAGE
+              value: fr
+            - name: THEME
+              value: colors
+            - name: AUTH_DEFAULT_ROLES
+              value: denied
+            - name: NODE_ENV
+              value: production
+            - name: TZ
+              value: Europe/Paris
+            - name: ENABLE
+              value: careportal basal dbsize rawbg iob cob cage iage sage boluscalc cors
+            - name: INSECURE_USE_HTTP
+              value: "true"
+          envFrom:
+            - secretRef:
+                name: nightscout-secrets
+          startupProbe:
+            tcpSocket:
+              port: 1337
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 40
+          livenessProbe:
+            tcpSocket:
+              port: 1337
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: 1337
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3

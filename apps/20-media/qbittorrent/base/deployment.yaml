@@ -1,0 +1,136 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qbittorrent
+  labels:
+    app: qbittorrent
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: qbittorrent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: qbittorrent
+        vixens.io/sizing.qbittorrent: V-medium
+        vixens.io/backup-profile: "relaxed"
+      annotations:
+        vixens.io/service-binding: "false"
+        kubectl.kubernetes.io/restartedAt: "2026-03-11T22:00:00Z"
+        vixens.io/explicitly-allow-root: "true"
+    spec:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      initContainers:
+        - name: fix-run-dir
+          image: busybox:1.38.0
+          command: ["sh", "-c", "chown 1000:1000 /run"]
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: run
+              mountPath: /run
+      priorityClassName: vixens-medium
+      containers:
+        - name: qbittorrent
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 512Mi
+            limits:
+              cpu: 200m
+              memory: 2Gi
+          image: lscr.io/linuxserver/qbittorrent:5.1.4
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: WEBUI_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: qbittorrent-secrets
+                  key: WEBUI_USERNAME
+            - name: WEBUI_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: qbittorrent-secrets
+                  key: WEBUI_PASSWORD
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: TZ
+              value: Europe/Paris
+            - name: WEBUI_PORT
+              value: "8080"
+            - name: HTTP_PROXY
+              value: http://gluetun.services.svc.cluster.local:8888
+            - name: HTTPS_PROXY
+              value: http://gluetun.services.svc.cluster.local:8888
+            - name: NO_PROXY
+              value: localhost,127.0.0.1,10.0.0.0/8,192.168.0.0/16
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /
+              port: http
+            failureThreshold: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: run
+              mountPath: /run
+            - name: config
+              mountPath: /config
+            - name: downloads
+              mountPath: /downloads
+      volumes:
+        - name: run
+          emptyDir: {}
+        - name: config
+          emptyDir: {}
+        - name: downloads
+          nfs:
+            server: nas.truxonline.com
+            path: /mnt/tank/scratch/downloads/torrents
+        - name: blackhole
+          nfs:
+            server: nas.truxonline.com
+            path: /mnt/tank/scratch/downloads/blackhole/torrent
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault

@@ -1,0 +1,10 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: music-assistant
+spec:
+  template:
+    metadata:
+      labels:
+        vixens.io/sizing.music-assistant: SB-medium

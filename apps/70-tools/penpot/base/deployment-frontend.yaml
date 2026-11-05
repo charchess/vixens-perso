@@ -1,0 +1,66 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: penpot-frontend
+  namespace: tools
+  labels:
+    app: penpot-frontend
+    component: frontend
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: penpot-frontend
+  template:
+    metadata:
+      annotations:
+        vixens.io/fast-start: "true"
+        vixens.io/no-long-connections: "true"
+      labels:
+        app: penpot-frontend
+        component: frontend
+        vixens.io/sizing.frontend: V-micro
+        vixens.io/backup-profile: "standard"
+    spec:
+      priorityClassName: vixens-medium
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: frontend
+          image: penpotapp/frontend:2.18.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PENPOT_BACKEND_URI
+              value: "http://penpot-backend:6060"
+            - name: PENPOT_FLAGS
+              value: "enable-registration enable-login-with-password disable-secure-session-cookies enable-smtp enable-email-verification enable-access-tokens"
+          ports:
+            - containerPort: 8080
+              name: http
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      restartPolicy: Always

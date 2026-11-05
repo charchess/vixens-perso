@@ -1,0 +1,21 @@
+# Runtime Python dependencies required by Home Assistant custom integrations.
+# Installed into /config/python_packages/py314 by the install-python-deps initContainer.
+#
+# Roomba+ requires both the classic local-MQTT library and the Prime/cloud library.
+hass-web-proxy-lib==0.0.8
+roombapy==2.0.2
+roombapy-prime[map]==0.8.2
+
+# BPS / scientific stack
+aiofiles>=23.1.0
+numpy>=1.26.4
+scipy>=1.10.1
+shapely>=2.0.2
+
+# Versatile Thermostat 10.6+ declares vtherm_api>=0.7.0 in its manifest.
+# Preinstall it in the writable runtime dependency tree: the HA container runs
+# as UID 1000 and cannot install it later into its immutable site-packages.
+vtherm_api>=0.7.0
+
+# TrueNAS SCALE integration 2.13.0 requires aiotruenas>=1.7.0.
+aiotruenas>=1.7.0

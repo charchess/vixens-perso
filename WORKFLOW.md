@@ -4,9 +4,22 @@
 
 ```text
 GitHub Issue → branch → Pull Request → required CI → merge to main
+→ immutable dev-v candidate → physical acceptance → explicit promotion
+→ immutable prod-v release → local prod-stable pointer
 ```
 
-This repository has no independent deployment or production-promotion authority. Until an approved Argo CD handoff exists, `main` is source preparation only.
+This repository owns its **local release tags only**. A successful `main`
+validation creates an immutable `dev-vYYYY.MM.*` candidate and updates the
+mutable `dev-latest` pointer. Production promotion is an explicit human
+`workflow_dispatch` for one exact candidate; it verifies candidate provenance,
+the successful validation of that exact commit, and `main` ancestry before it
+creates an immutable `prod-vYYYY.MM.*` tag and moves only this repository's
+`prod-stable` pointer.
+
+The release workflow neither creates an Argo CD Application nor changes an
+existing Application source, environment, credential, stateful identity, or
+security boundary. A root-registration/Argo handoff and the required physical
+acceptance remain separately reviewed work.
 
 ## Required review questions
 

@@ -114,6 +114,14 @@ jobs:
               raise SystemExit('\n'.join(violations))
           PYTHON
 
+  release-workflow-contract:
+    name: Release workflow contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify local component release invariants
+        run: bash tests/test_component_release_workflows.sh
+
   validation-summary:
     name: Validation Summary
     if: always()
@@ -124,6 +132,7 @@ jobs:
       - secret-scan
       - kustomize-render
       - scope-boundary
+      - release-workflow-contract
 
     runs-on: ubuntu-latest
     steps:

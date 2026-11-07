@@ -1,0 +1,96 @@
+name: Promote to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Exact dev candidate version (for example v2026.11.8)"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: production-promotion
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Promote validated candidate
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve and verify candidate
+        id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${INPUT_VERSION#v}"
+          if [[ ! "$version" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9A-Za-z][0-9A-Za-z._-]*$ ]]; then
+            echo "::error::Expected vYYYY.MM.<PR-or-short-sha>."
+            exit 1
+          fi
+          dev_tag="dev-v${version}"
+          prod_tag="prod-v${version}"
+          git fetch --force --tags origin main
+          if ! git rev-parse "${dev_tag}^{commit}" >/dev/null 2>&1; then
+            echo "::error::Candidate ${dev_tag} does not exist."
+            exit 1
+          fi
+          commit_sha=$(git rev-parse "${dev_tag}^{commit}")
+          if ! git merge-base --is-ancestor "$commit_sha" origin/main; then
+            echo "::error::${dev_tag} is not an ancestor of main."
+            exit 1
+          fi
+          validated=$(gh api "/repos/${REPOSITORY}/actions/workflows/validate.yaml/runs?head_sha=${commit_sha}&status=completed&per_page=100" \
+            --jq '[.workflow_runs[] | select(.conclusion == "success" and .event == "push" and .head_branch == "main")] | length')
+          if [[ "$validated" == 0 ]]; then
+            echo "::error::No successful Validate & Security push run exists for ${commit_sha}."
+            exit 1
+          fi
+          if git rev-parse "${prod_tag}^{commit}" >/dev/null 2>&1; then
+            test "$(git rev-parse "${prod_tag}^{commit}")" = "$commit_sha"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "dev_tag=$dev_tag" >> "$GITHUB_OUTPUT"
+          echo "prod_tag=$prod_tag" >> "$GITHUB_OUTPUT"
+          echo "commit_sha=$commit_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Create immutable production tag
+        env:
+          PROD_TAG: ${{ steps.candidate.outputs.prod_tag }}
+          DEV_TAG: ${{ steps.candidate.outputs.dev_tag }}
+          COMMIT_SHA: ${{ steps.candidate.outputs.commit_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          if ! git rev-parse "${PROD_TAG}^{commit}" >/dev/null 2>&1; then
+            git tag -a "$PROD_TAG" "$COMMIT_SHA" -m "Production release from ${DEV_TAG}"
+            git push origin "refs/tags/${PROD_TAG}"
+          fi
+
+      - name: Move and verify local production pointer
+        env:
+          PROD_TAG: ${{ steps.candidate.outputs.prod_tag }}
+          COMMIT_SHA: ${{ steps.candidate.outputs.commit_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git tag -fa prod-stable "$COMMIT_SHA" -m "Production stable: ${PROD_TAG}"
+          git push --force origin refs/tags/prod-stable
+          git fetch --force --tags origin
+          test "$(git rev-parse 'prod-stable^{commit}')" = "$COMMIT_SHA"

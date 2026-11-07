@@ -61,10 +61,12 @@ jobs:
           if git rev-parse "${prod_tag}^{commit}" >/dev/null 2>&1; then
             test "$(git rev-parse "${prod_tag}^{commit}")" = "$commit_sha"
           fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "dev_tag=$dev_tag" >> "$GITHUB_OUTPUT"
-          echo "prod_tag=$prod_tag" >> "$GITHUB_OUTPUT"
-          echo "commit_sha=$commit_sha" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$version"
+            echo "dev_tag=$dev_tag"
+            echo "prod_tag=$prod_tag"
+            echo "commit_sha=$commit_sha"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Create immutable production tag
         env:

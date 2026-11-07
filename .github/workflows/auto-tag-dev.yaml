@@ -44,8 +44,10 @@ jobs:
           else
             version="${year_month}.$(git rev-parse --short=9 "$COMMIT_SHA")"
           fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=dev-v${version}" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$version"
+            echo "tag=dev-v${version}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Create immutable candidate and update dev pointer
         env:

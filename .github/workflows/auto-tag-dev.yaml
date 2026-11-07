@@ -1,0 +1,70 @@
+name: Auto-tag Dev
+
+on:
+  workflow_run:
+    workflows: ["Validate & Security"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: auto-tag-dev-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Tag validated main candidate
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Resolve candidate version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          year_month=$(date -u +%Y.%m)
+          pr_number=$(gh api "/repos/${REPOSITORY}/commits/${COMMIT_SHA}/pulls" \
+            --jq '[.[] | select(.merged_at != null and .base.ref == "main")] | sort_by(.merged_at) | last | .number // empty')
+          if [[ -n "$pr_number" ]]; then
+            version="${year_month}.${pr_number}"
+          else
+            version="${year_month}.$(git rev-parse --short=9 "$COMMIT_SHA")"
+          fi
+          {
+            echo "version=$version"
+            echo "tag=dev-v${version}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create immutable candidate and update dev pointer
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git fetch --force --tags origin
+          if git rev-parse "${TAG}^{commit}" >/dev/null 2>&1; then
+            test "$(git rev-parse "${TAG}^{commit}")" = "$COMMIT_SHA"
+          else
+            git tag -a "$TAG" "$COMMIT_SHA" -m "Validated dev candidate ${VERSION}"
+            git push origin "refs/tags/${TAG}"
+          fi
+          git tag -fa dev-latest "$COMMIT_SHA" -m "Latest validated dev candidate: ${TAG}"
+          git push --force origin refs/tags/dev-latest

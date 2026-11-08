@@ -7,9 +7,7 @@ resources:
   - apps/mosquitto.yaml
   - apps/music-assistant.yaml
   - apps/pyload.yaml
-  - apps/adguard-home.yaml
   - apps/mail-gateway.yaml
-  - apps/actual-budget.yaml
   - apps/mail.yaml
   - apps/headlamp.yaml
   - apps/radar.yaml

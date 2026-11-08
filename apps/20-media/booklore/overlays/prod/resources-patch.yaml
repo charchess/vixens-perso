@@ -7,5 +7,4 @@ spec:
   template:
     metadata:
       annotations:
-        # booklore V-small(640Mi) + dataangel B-small(512Mi) = 1152Mi
         vixens.io/vpa.max-memory: "1152Mi"

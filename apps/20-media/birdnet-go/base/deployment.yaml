@@ -24,7 +24,6 @@ spec:
         vixens.io/fast-start: "true"
         reloader.stakater.com/auto: "true"
         vixens.io/no-long-connections: "true"
-        dataangel.io/metrics-port: "9090"
     spec:
       priorityClassName: vixens-medium
       tolerations:

@@ -1,0 +1,30 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: radar
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "11" # Low-priority monitoring
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/charchess/vixens-perso.git
+    targetRevision: prod-stable
+    path: apps/70-tools/radar/overlays/prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: tools
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

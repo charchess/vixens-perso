@@ -12,9 +12,6 @@ spec:
           emptyDir: {}
         - name: data
           emptyDir: {}
-        - name: adguard-home-litestream-config
-          configMap:
-            name: adguard-home-litestream-config
       containers:
         - name: adguard-home
           resources:
@@ -29,20 +26,6 @@ spec:
               mountPath: /opt/adguardhome/conf
             - name: data
               mountPath: /opt/adguardhome/work
-        - name: litestream
-          resources:
-            requests:
-              cpu: 10m
-              memory: 32Mi
-            limits:
-              cpu: 50m
-              memory: 64Mi
-          volumeMounts:
-            - name: data
-              mountPath: /opt/adguardhome/work
-            - name: adguard-home-litestream-config
-              mountPath: /etc/litestream.yml
-              subPath: litestream.yml
         - name: config-syncer
           resources:
             requests:
@@ -54,11 +37,3 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /opt/adguardhome/conf
-          readinessProbe:
-            exec:
-              command: ["sh", "-c", "pgrep -f rclone"]
-            periodSeconds: 30
-          livenessProbe:
-            exec:
-              command: ["sh", "-c", "pgrep -f rclone"]
-            periodSeconds: 60

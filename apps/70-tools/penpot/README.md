@@ -10,5 +10,4 @@ Self-hosted Penpot instance.
 ## Dependencies
 - PostgreSQL Shared
 - Redis Shared
-- S3 (Litestream bucket)
 - SMTP

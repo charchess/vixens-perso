@@ -7,5 +7,4 @@ spec:
   template:
     metadata:
       annotations:
-        # radarr V-medium(1280Mi) + dataangel V-small(640Mi) = 1920Mi
         vixens.io/vpa.max-memory: "1920Mi"

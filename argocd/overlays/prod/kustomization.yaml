@@ -1,0 +1,17 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: argocd
+resources:
+  - apps/homeassistant.yaml
+  - apps/mosquitto.yaml
+  - apps/music-assistant.yaml
+  - apps/pyload.yaml
+  - apps/adguard-home.yaml
+  - apps/mail-gateway.yaml
+  - apps/actual-budget.yaml
+  - apps/mail.yaml
+  - apps/headlamp.yaml
+  - apps/radar.yaml
+  - apps/renovate.yaml
+  - apps/trilium.yaml

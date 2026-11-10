@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: green-pvc
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          image: example.invalid/app:1
+          volumeMounts:
+            - name: config
+              mountPath: /config
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: green-pvc-config

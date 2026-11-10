@@ -1,0 +1,1 @@
+{"version":1,"stateful_paths":["/config","/data"],"exceptions":[{"workload":"Deployment/green-exception","path":"/config","reason":"configuration is deliberately reconstructed for this stateless fixture","owner":"tests"}]}

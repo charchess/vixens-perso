@@ -1,0 +1,1 @@
+{"version":1,"stateful_paths":["/config","/data"],"exceptions":[{"workload":"Deployment/red-invalid-exception","path":"/config","reason":"missing owner is invalid"}]}

@@ -90,7 +90,8 @@ spec:
               mountPath: /config
       volumes:
         - name: config
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: prowlarr-config-pvc
       securityContext:
         runAsNonRoot: true
         fsGroup: 1000

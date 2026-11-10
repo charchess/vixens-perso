@@ -4,12 +4,34 @@
 import argparse
 import json
 import re
+from datetime import date
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-REQUIRED_EXCEPTION_FIELDS = ("workload", "path", "reason", "owner")
+REQUIRED_EXCEPTION_FIELDS = (
+    "workload",
+    "namespace",
+    "container",
+    "mountPath",
+    "volume",
+    "path",
+    "reason",
+    "owner",
+    "issue",
+    "reviewer",
+    "created_at",
+    "expires_at",
+)
+
+
+def parse_date(value: str, field: str, index: int) -> date:
+    try:
+        return date.fromisoformat(value)
+    except ValueError as error:
+        raise ValueError(f"exception {index} has invalid {field}: {value}") from error
+
 
 
 def scalar(value: str) -> str:
@@ -33,6 +55,12 @@ def load_contract(path: Path) -> dict:
         missing = [field for field in REQUIRED_EXCEPTION_FIELDS if not isinstance(exception.get(field), str) or not exception[field].strip()]
         if missing:
             raise ValueError(f"exception {index} missing required fields: {', '.join(missing)}")
+        created_at = parse_date(exception["created_at"], "created_at", index)
+        expires_at = parse_date(exception["expires_at"], "expires_at", index)
+        if expires_at < created_at:
+            raise ValueError(f"exception {index} expires before creation")
+        if expires_at < date.today():
+            raise ValueError(f"exception {index} has expired")
         if exception["path"] not in paths:
             raise ValueError(f"exception {index} path is not stateful: {exception['path']}")
     corrections = contract.get("corrections", [])
@@ -72,12 +100,31 @@ def parse_document(document: str) -> dict:
     mode_indent = -1
     current_volume = None
     current_mount = None
+    current_container = ""
+    container_indent = None
 
     for line in lines:
         indent = len(line) - len(line.lstrip(" "))
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
+        if stripped in {"containers:", "initContainers:"}:
+            container_indent = indent
+            current_container = ""
+            continue
+        if container_indent is not None and indent < container_indent:
+            container_indent = None
+            current_container = ""
+        elif container_indent is not None and indent == container_indent:
+            match = re.match(r"-\s+name:\s*(.+)$", stripped)
+            if match:
+                current_container = scalar(match.group(1))
+            elif stripped.startswith("- "):
+                current_container = ""
+        elif container_indent is not None and indent == container_indent + 2:
+            match = re.match(r"name:\s*(.+)$", stripped)
+            if match:
+                current_container = scalar(match.group(1))
         if indent == 0 and stripped.startswith("kind:"):
             kind = scalar(stripped.split(":", 1)[1])
         if indent == 0 and stripped == "metadata:":
@@ -116,10 +163,10 @@ def parse_document(document: str) -> dict:
         elif mode == "mounts":
             match = re.match(r"-\s+name:\s*(.+)$", stripped)
             if match:
-                current_mount = {"name": scalar(match.group(1)), "mount_path": ""}
+                current_mount = {"container": current_container, "name": scalar(match.group(1)), "mount_path": ""}
                 mounts.append(current_mount)
             elif stripped.startswith("- "):
-                current_mount = {"name": "", "mount_path": ""}
+                current_mount = {"container": current_container, "name": "", "mount_path": ""}
                 mounts.append(current_mount)
                 if stripped.startswith("- mountPath:"):
                     current_mount["mount_path"] = scalar(stripped.split(":", 1)[1])
@@ -137,8 +184,22 @@ def stateful_path(path: str, paths: list[str]) -> str | None:
     return None
 
 
+def exception_identity(entry: dict) -> tuple[str, str, str, str, str, str]:
+    return (
+        entry["workload"],
+        entry["namespace"],
+        entry["container"],
+        entry["mountPath"],
+        entry["volume"],
+        entry["path"],
+    )
+
+
 def run(target: Path, contract: dict, kustomize: str) -> dict:
-    exceptions = {(entry["workload"], entry["path"]): entry for entry in contract["exceptions"]}
+    exceptions = {}
+    for entry in contract["exceptions"]:
+        identity = exception_identity(entry)
+        exceptions.setdefault(identity, []).append(entry)
     corrections = {(entry["workload"], entry["path"]): entry["issue"] for entry in contract.get("corrections", [])}
     violations, allowed = [], []
     for document in documents(render(target, kustomize)):
@@ -148,10 +209,21 @@ def run(target: Path, contract: dict, kustomize: str) -> dict:
             volume = parsed["volumes"].get(mount["name"], {})
             if not path or not volume.get("empty_dir"):
                 continue
-            item = {"workload": parsed["workload"], "namespace": parsed["namespace"], "path": path, "volume": mount["name"], "correction": corrections.get((parsed["workload"], path))}
-            exception = exceptions.get((parsed["workload"], path))
-            if exception:
-                allowed.append(item | {"reason": exception["reason"], "owner": exception["owner"]})
+            item = {
+                "workload": parsed["workload"],
+                "namespace": parsed["namespace"],
+                "container": mount["container"],
+                "mountPath": mount["mount_path"],
+                "path": path,
+                "volume": mount["name"],
+                "correction": corrections.get((parsed["workload"], path)),
+            }
+            matches = exceptions.get((item["workload"], item["namespace"], item["container"], item["mountPath"], item["volume"], item["path"]), [])
+            if len(matches) == 1:
+                exception = matches[0]
+                allowed.append(item | {"reason": exception["reason"], "owner": exception["owner"], "issue": exception["issue"], "reviewer": exception["reviewer"], "created_at": exception["created_at"], "expires_at": exception["expires_at"]})
+            elif len(matches) > 1:
+                violations.append(item | {"error": "ambiguous exception rules"})
             else:
                 violations.append(item)
     return {"target": str(target), "violations": violations, "allowed_by_design": allowed}

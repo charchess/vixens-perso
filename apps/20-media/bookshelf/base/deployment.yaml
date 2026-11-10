@@ -77,7 +77,8 @@ spec:
               mountPath: /books
       volumes:
         - name: config
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: bookshelf-config-pvc
         - name: downloads
           nfs:
             server: nas.truxonline.com

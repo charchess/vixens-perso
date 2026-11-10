@@ -93,7 +93,8 @@ spec:
               subPath: Comics
       volumes:
         - name: config
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: mylar-config-pvc
         - name: downloads
           nfs:
             server: nas.truxonline.com

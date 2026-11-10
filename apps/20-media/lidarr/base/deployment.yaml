@@ -95,7 +95,8 @@ spec:
               subPath: music
       volumes:
         - name: config
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: lidarr-config-pvc
         - name: downloads
           nfs:
             server: nas.truxonline.com

@@ -118,7 +118,8 @@ spec:
         - name: run
           emptyDir: {}
         - name: config
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: qbittorrent-config-pvc
         - name: downloads
           nfs:
             server: nas.truxonline.com

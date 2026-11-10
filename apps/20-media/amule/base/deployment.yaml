@@ -124,7 +124,8 @@ spec:
               mountPath: /config
       volumes:
         - name: config
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: amule-config-pvc
         - name: downloads
           nfs:
             server: nas.truxonline.com

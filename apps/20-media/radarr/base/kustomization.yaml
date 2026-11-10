@@ -4,6 +4,7 @@ kind: Kustomization
 namespace: media
 resources:
   - deployment.yaml
+  - pvc.yaml
   - service.yaml
   - networkpolicy.yaml
   - cilium-networkpolicy.yaml

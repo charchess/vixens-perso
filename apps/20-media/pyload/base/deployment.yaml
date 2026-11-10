@@ -102,7 +102,8 @@ spec:
         - name: run
           emptyDir: {}
         - name: config
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: pyload-config-pvc
         - name: downloads
           nfs:
             server: nas.truxonline.com

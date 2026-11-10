@@ -5,6 +5,7 @@ resources:
   - rbac.yaml
   - configmap.yaml
   - deployment.yaml
+  - pvc.yaml
   - service.yaml
   - config-external-secret.yaml
   - cilium-networkpolicy.yaml

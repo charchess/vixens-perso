@@ -4,6 +4,7 @@ kind: Kustomization
 namespace: media # Specify the namespace here
 resources:
   - deployment.yaml
+  - pvc.yaml
   - service.yaml
   - external-secret.yaml
   - servicemonitor.yaml

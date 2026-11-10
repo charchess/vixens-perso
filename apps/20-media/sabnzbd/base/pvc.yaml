@@ -1,0 +1,14 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sabnzbd-config-pvc
+  labels:
+    vixens.io/config-owner: sabnzbd
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: storage-rwo-retain
+  resources:
+    requests:
+      storage: 2Gi

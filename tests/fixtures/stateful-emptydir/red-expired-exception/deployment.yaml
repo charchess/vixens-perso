@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: red-expired-exception
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          image: example.invalid/app:1
+          volumeMounts:
+            - name: config
+              mountPath: /config
+      volumes:
+        - name: config
+          emptyDir: {}

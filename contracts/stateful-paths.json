@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "stateful_paths": ["/config", "/data"],
+  "exceptions": [],
+  "corrections": [
+    {"workload": "Deployment/sabnzbd", "path": "/config", "issue": "https://github.com/charchess/vixens-perso/issues/21"},
+    {"workload": "Deployment/radarr", "path": "/config", "issue": "https://github.com/charchess/vixens-perso/issues/21"},
+    {"workload": "Deployment/sonarr", "path": "/config", "issue": "https://github.com/charchess/vixens-perso/issues/21"},
+    {"workload": "Deployment/prowlarr", "path": "/config", "issue": "https://github.com/charchess/vixens-perso/issues/21"},
+    {"workload": "Deployment/birdnet-go", "path": "/data", "issue": "https://github.com/charchess/vixens-perso/issues/21"}
+  ],
+  "correction_policy": "Each reported violation must be linked to a targeted corrective issue before it may be considered resolved."
+}

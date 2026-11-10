@@ -134,8 +134,7 @@ spec:
             secretName: homepage-config-secret
         # Writable runtime copy populated by copy-initial-config.
         - name: config-vol
-          persistentVolumeClaim:
-            claimName: homepage-config-pvc
+          emptyDir: {}
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000

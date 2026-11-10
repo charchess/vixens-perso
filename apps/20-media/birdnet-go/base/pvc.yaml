@@ -1,0 +1,14 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: birdnet-go-data-pvc
+  labels:
+    vixens.io/config-owner: birdnet-go
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: storage-rwo-retain
+  resources:
+    requests:
+      storage: 10Gi

@@ -93,8 +93,7 @@ spec:
               subPath: xxx
       volumes:
         - name: config
-          persistentVolumeClaim:
-            claimName: whisparr-config-pvc
+          emptyDir: {}
         - name: downloads
           nfs:
             server: nas.truxonline.com

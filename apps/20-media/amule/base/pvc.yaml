@@ -1,0 +1,14 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: amule-config-pvc
+  labels:
+    vixens.io/config-owner: amule
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: storage-rwo-retain
+  resources:
+    requests:
+      storage: 2Gi

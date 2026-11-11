@@ -95,7 +95,8 @@ spec:
               subPath: series
       volumes:
         - name: config
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: sonarr-config-pvc
         - name: downloads
           nfs:
             server: nas.truxonline.com

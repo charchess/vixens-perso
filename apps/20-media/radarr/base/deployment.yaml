@@ -95,7 +95,8 @@ spec:
               subPath: movies
       volumes:
         - name: config
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: radarr-config-pvc
         - name: downloads
           nfs:
             server: nas.truxonline.com

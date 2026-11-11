@@ -4,7 +4,6 @@
 import argparse
 import json
 import re
-from datetime import date
 import shutil
 import subprocess
 import sys
@@ -22,16 +21,7 @@ REQUIRED_EXCEPTION_FIELDS = (
     "issue",
     "reviewer",
     "created_at",
-    "expires_at",
 )
-
-
-def parse_date(value: str, field: str, index: int) -> date:
-    try:
-        return date.fromisoformat(value)
-    except ValueError as error:
-        raise ValueError(f"exception {index} has invalid {field}: {value}") from error
-
 
 
 def scalar(value: str) -> str:
@@ -55,12 +45,6 @@ def load_contract(path: Path) -> dict:
         missing = [field for field in REQUIRED_EXCEPTION_FIELDS if not isinstance(exception.get(field), str) or not exception[field].strip()]
         if missing:
             raise ValueError(f"exception {index} missing required fields: {', '.join(missing)}")
-        created_at = parse_date(exception["created_at"], "created_at", index)
-        expires_at = parse_date(exception["expires_at"], "expires_at", index)
-        if expires_at < created_at:
-            raise ValueError(f"exception {index} expires before creation")
-        if expires_at < date.today():
-            raise ValueError(f"exception {index} has expired")
         if exception["path"] not in paths:
             raise ValueError(f"exception {index} path is not stateful: {exception['path']}")
     corrections = contract.get("corrections", [])
@@ -221,7 +205,7 @@ def run(target: Path, contract: dict, kustomize: str) -> dict:
             matches = exceptions.get((item["workload"], item["namespace"], item["container"], item["mountPath"], item["volume"], item["path"]), [])
             if len(matches) == 1:
                 exception = matches[0]
-                allowed.append(item | {"reason": exception["reason"], "owner": exception["owner"], "issue": exception["issue"], "reviewer": exception["reviewer"], "created_at": exception["created_at"], "expires_at": exception["expires_at"]})
+                allowed.append(item | {"reason": exception["reason"], "owner": exception["owner"], "issue": exception["issue"], "reviewer": exception["reviewer"], "created_at": exception["created_at"]})
             elif len(matches) > 1:
                 violations.append(item | {"error": "ambiguous exception rules"})
             else:

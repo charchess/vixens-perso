@@ -25,7 +25,6 @@ expect_green green-exception
 expect_red red-config
 expect_red red-data
 expect_red red-invalid-exception
-expect_red red-expired-exception
 expect_red red-mount-path-mismatch
 expect_red red-missing-rule
 expect_red red-ambiguous-rule

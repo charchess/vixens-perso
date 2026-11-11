@@ -4,6 +4,7 @@
 import argparse
 import json
 import re
+from datetime import date
 import shutil
 import subprocess
 import sys
@@ -22,6 +23,13 @@ REQUIRED_EXCEPTION_FIELDS = (
     "reviewer",
     "created_at",
 )
+
+
+def parse_created_at(value: str, index: int) -> None:
+    try:
+        date.fromisoformat(value)
+    except ValueError as error:
+        raise ValueError(f"exception {index} has invalid created_at: {value}") from error
 
 
 def scalar(value: str) -> str:
@@ -45,6 +53,7 @@ def load_contract(path: Path) -> dict:
         missing = [field for field in REQUIRED_EXCEPTION_FIELDS if not isinstance(exception.get(field), str) or not exception[field].strip()]
         if missing:
             raise ValueError(f"exception {index} missing required fields: {', '.join(missing)}")
+        parse_created_at(exception["created_at"], index)
         if exception["path"] not in paths:
             raise ValueError(f"exception {index} path is not stateful: {exception['path']}")
     corrections = contract.get("corrections", [])

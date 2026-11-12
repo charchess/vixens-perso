@@ -1,0 +1,51 @@
+---
+# Design contract only: this is neither a Kubernetes resource nor a NetBird API payload.
+# Applying it requires a distinct, approved management-plane change after pre-merge and runtime gates.
+apiVersion: vixens.io/netbird-policy-contract/v1alpha1
+kind: NetBirdPersoPolicyContract
+metadata:
+  name: netbird-perso-deny-by-default
+  issue: https://github.com/charchess/vixens-perso/issues/52
+  decision: https://github.com/charchess/vixens-perso/issues/49
+spec:
+  enforcement: not-applied-by-gitops
+  defaultAction: deny
+  groups:
+    - id: perso-operators
+      purpose: Future NetBird policy administrators for the Perso boundary.
+      members: [] # Deliberately no human, account, or peer is assigned here.
+    - id: perso-devices
+      purpose: Future approved client peers in the Perso overlay.
+      members: [] # Deliberately no peer is created or enrolled here.
+    - id: perso-control-plane
+      purpose: NetBird management, signal, and relay control-plane services for Perso.
+      members: [] # Service identity mapping is deferred to the approved management-plane change.
+  routes: [] # No subnet/CIDR route is granted until a separately reviewed route decision.
+  rules:
+    - id: deny-unlisted-overlay-traffic
+      action: deny
+      sources: ["*"]
+      destinations: ["*"]
+      rationale: The baseline is deny-by-default; a future allow must name both groups and its purpose.
+    - id: allow-perso-operators-to-control-plane
+      action: allow
+      sources: [perso-operators]
+      destinations: [perso-control-plane]
+      services: [netbird-management]
+      rationale: Permits only future authenticated policy administration; it grants no subnet route or peer.
+    - id: deny-excluded-domains
+      action: deny
+      sources: ["*"]
+      destinations: [shared-cluster, talos, storage, openbao-infra, fabric]
+      rationale: These domains are outside the Perso boundary by decision #49.
+  exclusions:
+    - id: shared-cluster
+      reason: Shared cluster is not reachable through the Perso overlay.
+    - id: talos
+      reason: Talos management is not reachable through the Perso overlay.
+    - id: storage
+      reason: Storage networks are not reachable through the Perso overlay.
+    - id: openbao-infra
+      reason: OpenBao Infra is not reachable through the Perso overlay.
+    - id: fabric
+      reason: Fabric is not reachable through the Perso overlay.

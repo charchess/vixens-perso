@@ -19,3 +19,4 @@ resources:
   - apps/radar.yaml
   - apps/renovate.yaml
   - apps/trilium.yaml
+  - apps/linkwarden.yaml

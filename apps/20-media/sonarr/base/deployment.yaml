@@ -92,7 +92,6 @@ spec:
               mountPath: /downloads
             - name: tv
               mountPath: /tv
-              subPath: series
       volumes:
         - name: config
           persistentVolumeClaim:
@@ -104,7 +103,7 @@ spec:
         - name: tv
           nfs:
             server: nas.truxonline.com
-            path: /mnt/tank/data/media
+            path: /mnt/tank/data/media/series
       securityContext:
         runAsNonRoot: true
         fsGroup: 1000

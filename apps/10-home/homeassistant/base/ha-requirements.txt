@@ -4,7 +4,10 @@
 # Roomba+ requires both the classic local-MQTT library and the Prime/cloud library.
 hass-web-proxy-lib==0.0.8
 roombapy==2.0.2
-roombapy-prime[map]==0.8.2
+roombapy-prime[map]==0.8.3
+
+# LocalThings 0.38.0 uses a local SmartThings transport.
+smartthings-local>=0.1.23
 
 # BPS / scientific stack
 aiofiles>=23.1.0
@@ -20,8 +23,9 @@ vtherm_api>=0.7.0
 # TrueNAS SCALE integration 2.13.0 requires aiotruenas>=1.7.0.
 aiotruenas>=1.7.0
 
-# HA-MCP custom component 9.1.0: Home Assistant Core already supplies
-# mcp==2.3.0, so only its absent runtime dependencies are installed here.
+# Marketplace HA-MCP 9.2.0 runs on the Core-supplied MCP stack. Pin AnyIO to
+# the Core MCP contract because the writable custom overlay precedes Core on sys.path.
+anyio==4.15.1
 ruamel.yaml>=0.18.0
 voluptuous-openapi>=0.4.1
-ha-mcp==9.1.0
+ha-mcp==9.2.0

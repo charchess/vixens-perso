@@ -117,10 +117,14 @@ spec:
                 echo "Home Assistant runtime Python requirements already satisfied."
               else
                 echo "Installing/upgrading Home Assistant runtime Python requirements..."
-                # pip --target leaves older dist-info behind. Remove only the
-                # upgraded runtime packages so metadata and imports are unambiguous.
+                # pip --target leaves older dist-info behind. Remove runtime packages
+                # whose manifests now require a different version so metadata and imports
+                # stay unambiguous after a custom-component update.
                 rm -rf "$TARGET"/roombapy_prime "$TARGET"/roombapy_prime-*.dist-info
                 rm -rf "$TARGET"/aiotruenas "$TARGET"/aiotruenas-*.dist-info
+                rm -rf "$TARGET"/ha_mcp "$TARGET"/ha_mcp-*.dist-info
+                rm -rf "$TARGET"/anyio "$TARGET"/anyio-*.dist-info
+                rm -rf "$TARGET"/smartthings_local "$TARGET"/smartthings_local-*.dist-info
                 python -m pip install \
                   --no-cache-dir \
                   --upgrade \

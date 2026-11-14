@@ -30,6 +30,15 @@ spec:
         - ports:
             - port: "9696"
               protocol: TCP
+    # whisparr → SABnzbd (internal download client API)
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: media
+            app: sabnzbd
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
     # whisparr → world (metadata APIs)
     - toEntities:
         - world

@@ -46,101 +46,6 @@ spec:
           operator: Exists
           effect: NoSchedule
       initContainers:
-        - name: install-python-deps
-          image: python:3.14.7-alpine
-          securityContext:
-            capabilities:
-              add: [CHOWN]
-            runAsUser: 0
-          command:
-            - sh
-            - -c
-          args:
-            - |
-              set -eu
-
-              REQUIREMENTS="/requirements/ha-requirements.txt"
-              TARGET="/config/python_packages/py314"
-              CHECKER="/tmp/check-ha-requirements.py"
-
-              mkdir -p "$TARGET"
-
-              cat > "$CHECKER" <<'PY'
-              import sys
-              from importlib.metadata import distributions
-              from pathlib import Path
-
-              from pip._vendor.packaging.requirements import Requirement
-              from pip._vendor.packaging.utils import canonicalize_name
-
-              requirements_path = Path(sys.argv[1])
-              target = sys.argv[2]
-
-              installed = {}
-              for dist in distributions(path=[target]):
-                  name = dist.metadata.get("Name")
-                  if name:
-                      installed[canonicalize_name(name)] = dist.version
-
-              unsatisfied = []
-              for raw_line in requirements_path.read_text().splitlines():
-                  line = raw_line.split("#", 1)[0].strip()
-                  if not line:
-                      continue
-
-                  requirement = Requirement(line)
-                  if requirement.marker is not None and not requirement.marker.evaluate():
-                      continue
-
-                  name = canonicalize_name(requirement.name)
-                  version = installed.get(name)
-                  if version is None:
-                      unsatisfied.append(f"{line} (missing)")
-                      continue
-
-                  if requirement.specifier and not requirement.specifier.contains(
-                      version, prereleases=True
-                  ):
-                      unsatisfied.append(f"{line} (installed: {version})")
-                      continue
-
-                  print(f"{requirement.name} {version}: satisfied")
-
-              if unsatisfied:
-                  print("Unsatisfied runtime requirements:", file=sys.stderr)
-                  for item in unsatisfied:
-                      print(f" - {item}", file=sys.stderr)
-                  raise SystemExit(1)
-              PY
-
-              if python "$CHECKER" "$REQUIREMENTS" "$TARGET"; then
-                echo "Home Assistant runtime Python requirements already satisfied."
-              else
-                echo "Installing/upgrading Home Assistant runtime Python requirements..."
-                # pip --target leaves older dist-info behind. Remove runtime packages
-                # whose manifests now require a different version so metadata and imports
-                # stay unambiguous after a custom-component update.
-                rm -rf "$TARGET"/roombapy_prime "$TARGET"/roombapy_prime-*.dist-info
-                rm -rf "$TARGET"/aiotruenas "$TARGET"/aiotruenas-*.dist-info
-                rm -rf "$TARGET"/ha_mcp "$TARGET"/ha_mcp-*.dist-info
-                rm -rf "$TARGET"/anyio "$TARGET"/anyio-*.dist-info
-                rm -rf "$TARGET"/smartthings_local "$TARGET"/smartthings_local-*.dist-info
-                rm -rf "$TARGET"/vtherm_api "$TARGET"/vtherm_api-*.dist-info
-                python -m pip install \
-                  --no-cache-dir \
-                  --upgrade \
-                  --root-user-action=ignore \
-                  --target="$TARGET" \
-                  -r "$REQUIREMENTS"
-                chown -R 1000:1000 "$TARGET"
-                python "$CHECKER" "$REQUIREMENTS" "$TARGET"
-              fi
-          volumeMounts:
-            - name: config
-              mountPath: /config
-            - name: python-requirements
-              mountPath: /requirements
-              readOnly: true
         - name: config-init
           image: busybox:1.38.0
           securityContext:
@@ -196,11 +101,14 @@ spec:
                 mkdir -p /config/python_scripts
                 chown 1000:1000 /config/python_scripts
               fi
-              # HA backup restore runs as UID/GID 1000 and must replace this
-              # disposable runtime dependency tree atomically.
-              mkdir -p /config/python_packages
-              chown 1000:1000 /config/python_packages
-              chmod 2775 /config/python_packages
+              # Home Assistant manages custom-integration requirements in its
+              # persistent Python user site. It must exist before Python starts
+              # so site.py includes it in sys.path.
+              mkdir -p /config/deps/lib/python3.14/site-packages
+              chown 1000:1000 /config/deps /config/deps/lib \
+                /config/deps/lib/python3.14 /config/deps/lib/python3.14/site-packages
+              chmod 0755 /config/deps /config/deps/lib \
+                /config/deps/lib/python3.14 /config/deps/lib/python3.14/site-packages
           volumeMounts:
             - name: config
               mountPath: /config
@@ -209,6 +117,9 @@ spec:
               readOnly: true
       containers:
         - name: homeassistant
+          # The official image opts into its root-owned system Python. Remove
+          # that inherited opt-in before starting S6 so HA uses PYTHONUSERBASE.
+          command: ["/bin/sh", "-ec", "unset UV_SYSTEM_PYTHON UV_PYTHON; exec /init"]
           lifecycle:
             preStop:
               exec:
@@ -231,8 +142,8 @@ spec:
           env:
             - name: TZ
               value: Europe/Paris
-            - name: PYTHONPATH
-              value: /config/python_packages/py314:/usr/local/lib/python3.14/site-packages
+            - name: PYTHONUSERBASE
+              value: /config/deps
           livenessProbe:
             httpGet:
               path: /
@@ -262,6 +173,3 @@ spec:
         - name: ha-config
           secret:
             secretName: homeassistant-config
-        - name: python-requirements
-          configMap:
-            name: homeassistant-python-requirements

@@ -92,10 +92,10 @@ spec:
               mountPath: /downloads
             - name: music
               mountPath: /music
-              subPath: music
       volumes:
         - name: config
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: lidarr-config-pvc
         - name: downloads
           nfs:
             server: nas.truxonline.com
@@ -103,7 +103,7 @@ spec:
         - name: music
           nfs:
             server: nas.truxonline.com
-            path: /mnt/tank/data/media
+            path: /mnt/tank/data/media/music
       securityContext:
         runAsNonRoot: true
         fsGroup: 1000

@@ -125,6 +125,7 @@ spec:
                 rm -rf "$TARGET"/ha_mcp "$TARGET"/ha_mcp-*.dist-info
                 rm -rf "$TARGET"/anyio "$TARGET"/anyio-*.dist-info
                 rm -rf "$TARGET"/smartthings_local "$TARGET"/smartthings_local-*.dist-info
+                rm -rf "$TARGET"/vtherm_api "$TARGET"/vtherm_api-*.dist-info
                 python -m pip install \
                   --no-cache-dir \
                   --upgrade \

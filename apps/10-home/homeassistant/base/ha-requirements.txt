@@ -4,7 +4,7 @@
 # Roomba+ requires both the classic local-MQTT library and the Prime/cloud library.
 hass-web-proxy-lib==0.0.8
 roombapy==2.0.2
-roombapy-prime[map]==0.8.3
+roombapy-prime[map]==0.9.1
 
 # LocalThings 0.38.0 uses a local SmartThings transport.
 smartthings-local>=0.1.23

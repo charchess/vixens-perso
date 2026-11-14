@@ -35,6 +35,15 @@ spec:
         - ports:
             - port: "9696"
               protocol: TCP
+    # lidarr → SABnzbd (internal download client API)
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: media
+            app: sabnzbd
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
     # lidarr → world (MusicBrainz, metadata APIs)
     - toEntities:
         - world

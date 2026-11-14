@@ -30,6 +30,15 @@ spec:
         - ports:
             - port: "9696"
               protocol: TCP
+    # radarr → SABnzbd (internal download client API)
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: media
+            app: sabnzbd
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
     # radarr → world (TMDB, metadata APIs)
     - toEntities:
         - world

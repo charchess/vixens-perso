@@ -34,6 +34,8 @@ spec:
         # Exact virtual aliases terminate the domain catch-all before LDAP
         # virtual-mailbox delivery, preserving the catch-all for unknown mail.
         vixens.io/postfix-virtual-aliases: "mailbox-self-exceptions-v1"
+        # Dovecot read-only shared namespace, populated by persona provisioning ACLs.
+        vixens.io/dovecot-persona-shared-mailboxes: "read-only-dynamic-v1"
       labels: {app.kubernetes.io/name: mailserver, app.kubernetes.io/part-of: truxonline-mail}
     spec:
       securityContext: {fsGroup: 5000, fsGroupChangePolicy: OnRootMismatch}

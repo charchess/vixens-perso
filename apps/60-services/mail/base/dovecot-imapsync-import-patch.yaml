@@ -59,3 +59,39 @@ data:
     if ! grep -qx '!include auth-imapsync-import.conf.ext' /etc/dovecot/conf.d/10-auth.conf; then
       sed -i '/^!include auth-ldap\.conf\.ext$/i !include auth-imapsync-import.conf.ext' /etc/dovecot/conf.d/10-auth.conf
     fi
+
+    # One generic, read-only shared namespace. Individual mailbox ACL records
+    # are managed by the bounded persona-mail provisioning flow, so a newly
+    # onboarded sister needs no Git change to appear under Shared/<owner>/.
+    # Per-viewer indexes live on persistent mail-state, never in owner Maildirs.
+    install -d -o 5000 -g 5000 -m 0770 /var/mail-state/dovecot-shared
+    cat >/etc/dovecot/conf.d/91-persona-shared.conf <<'EOF'
+    mail_plugins {
+      acl = yes
+    }
+
+    protocol imap {
+      mail_plugins {
+        imap_acl = yes
+      }
+    }
+
+    acl_driver = vfile
+
+    acl_sharing_map {
+      dict file {
+        path = /var/mail-state/dovecot-shared/shared-mailboxes.db
+      }
+    }
+
+    namespace shared {
+      type = shared
+      separator = /
+      prefix = Shared/$username/
+      mail_driver = maildir
+      mail_path = /var/mail/%{owner_user | domain}/%{owner_user | username}
+      mail_index_private_path = /var/mail-state/dovecot-shared/%{user | username}/%{owner_user | username}
+      subscriptions = no
+      list = children
+    }
+    EOF

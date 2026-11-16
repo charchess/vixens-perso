@@ -86,8 +86,8 @@ data:
 
     namespace shared {
       type = shared
-      separator = /
-      prefix = Shared/$username/
+      separator = .
+      prefix = Shared.$username.
       mail_driver = maildir
       mail_path = /var/mail/%{owner_user | domain}/%{owner_user | username}
       mail_index_private_path = /var/mail-state/dovecot-shared/%{user | username}/%{owner_user | username}

@@ -109,6 +109,11 @@ spec:
                 /config/deps/lib/python3.14 /config/deps/lib/python3.14/site-packages
               chmod 0755 /config/deps /config/deps/lib \
                 /config/deps/lib/python3.14 /config/deps/lib/python3.14/site-packages
+              # LLM Vision stores Timeline key frames under /media/llmvision.
+              # /media is mounted from this persistent config volume below, so
+              # key frames remain available for the configured retention period.
+              mkdir -p /config/media/llmvision/snapshots
+              chown -R 1000:1000 /config/media
           volumeMounts:
             - name: config
               mountPath: /config
@@ -166,6 +171,11 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+            # Persist HA media (including LLM Vision Timeline key frames) on
+            # the config PVC; the root init container prepares its subPath.
+            - name: config
+              mountPath: /media
+              subPath: media
       volumes:
         - name: config
           persistentVolumeClaim:

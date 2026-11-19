@@ -73,6 +73,10 @@ spec:
       containers:
         - name: mailserver
           image: ghcr.io/docker-mailserver/docker-mailserver@sha256:d0fe7668defe157aad57ea31b1707ad1e2fb57d7a91bdf17cbdf876549946c86
+          # Kubernetes Pod hostnames are internal; keep the SMTP greeting and
+          # Postfix identity aligned with the public MX name and TLS certificate.
+          env:
+            - {name: OVERRIDE_HOSTNAME, value: mail.truxonline.com}
           # Least privilege set required by upstream DMS on Kubernetes. This is
           # workload-local: no privileged mode or host namespace/mount access.
           securityContext:

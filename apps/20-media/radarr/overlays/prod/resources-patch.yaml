@@ -7,4 +7,8 @@ spec:
   template:
     metadata:
       annotations:
+        # Keep the declared 50m/512Mi bootstrap envelope.  The generated VPA
+        # policy is deployment-wide (including sidecars), so do not apply a
+        # blanket per-container floor through it.
+        vixens.io/vpa.update-mode: "Off"
         vixens.io/vpa.max-memory: "1920Mi"

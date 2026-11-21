@@ -10,4 +10,7 @@ spec:
         vixens.io/sizing.sonarr: V-small
         vixens.io/sizing.config-syncer: V-nano
       annotations:
+        # Preserve the declared bootstrap envelope; VPA recommendations remain
+        # available but must not resize this multi-container Pod automatically.
+        vixens.io/vpa.update-mode: "Off"
         vixens.io/vpa.max-memory: "1792Mi"

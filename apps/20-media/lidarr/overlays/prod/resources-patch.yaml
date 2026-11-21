@@ -12,3 +12,7 @@ spec:
       labels:
         vixens.io/sizing.lidarr: V-medium
         vixens.io/sizing.config-syncer: V-nano
+      annotations:
+        # The generated VPA uses one policy for all containers. Keep the
+        # declared bootstrap envelope until per-container floors exist.
+        vixens.io/vpa.update-mode: "Off"

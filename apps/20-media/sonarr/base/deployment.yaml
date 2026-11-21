@@ -92,6 +92,8 @@ spec:
               mountPath: /downloads
             - name: tv
               mountPath: /tv
+            - name: anime
+              mountPath: /anime
       volumes:
         - name: config
           persistentVolumeClaim:
@@ -104,6 +106,10 @@ spec:
           nfs:
             server: nas.truxonline.com
             path: /mnt/tank/data/media/series
+        - name: anime
+          nfs:
+            server: nas.truxonline.com
+            path: /mnt/tank/data/media/anime
       securityContext:
         runAsNonRoot: true
         fsGroup: 1000

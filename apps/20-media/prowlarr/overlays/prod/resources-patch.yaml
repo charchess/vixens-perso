@@ -10,3 +10,7 @@ spec:
     metadata:
       labels:
         vixens.io/sizing.prowlarr: V-small
+      annotations:
+        # Preserve the declared bootstrap envelope; retain VPA recommendations
+        # without automatic in-place/recreate resizing.
+        vixens.io/vpa.update-mode: "Off"

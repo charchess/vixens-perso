@@ -17,6 +17,7 @@ spec:
     targetRevision: prod-stable
   syncPolicy:
     automated:
+      enabled: true
       prune: true
       selfHeal: true
     syncOptions:

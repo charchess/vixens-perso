@@ -26,6 +26,7 @@ spec:
         - /spec/suspend
   syncPolicy:
     automated:
+      enabled: true
       prune: true
       selfHeal: true
     syncOptions:
